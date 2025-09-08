@@ -1,0 +1,30 @@
+$datos = @(
+  @{DatosID=1;ClienteID=1000;Telefono='11-7079-4444';Email='eperez@yaguar.com.ar';Direccion='Avda Crisólogo Larralde 2109 Tigre BsAs';Provincia='Buenos Aires';Ciudad='Tigre';CodPostal='B1648';NroSucursal=2;GLN='7798022220027';Observaciones='No Abasta /'},
+  @{DatosID=2;ClienteID=1000;Telefono='11-62935026';Email='eperez@yaguar.com.ar';Direccion='Panamericana y Ruta 6 Campana BsAs';Provincia='Buenos Aires';Ciudad='Campana';CodPostal='B1617';NroSucursal=3;GLN='7798022220034';Observaciones='Abasta / Solicitu de turno con Elba Perez'},
+  @{DatosID=3;ClienteID=1000;Telefono=$null;Email='eperez@yaguar.com.ar';Direccion='Rta Prov. N° 24 e/Pichincha y Carrasco Jose C. Paz BsAs';Provincia='Buenos Aires';Ciudad='Jose C Paz';CodPostal='B1665';NroSucursal=4;GLN='7798022220041';Observaciones='Abasta'},
+  @{DatosID=4;ClienteID=1000;Telefono=$null;Email='eperez@yaguar.com.ar';Direccion='Avenida Blas Parera 5861 Sta Fe StaFe';Provincia='Santa Fe';Ciudad='Santa Fe';CodPostal='3000';NroSucursal=5;GLN='7798022220058';Observaciones='No Abasta'},
+  @{DatosID=5;ClienteID=1000;Telefono=$null;Email='eperez@yaguar.com.ar';Direccion='Avda Circunvalación y Rancagua Ciudad Cba Cord';Provincia='Córdoba';Ciudad='Cordoba';CodPostal='5000';NroSucursal=6;GLN='7798022220065';Observaciones='Abasta'},
+  @{DatosID=6;ClienteID=1000;Telefono=$null;Email=$null;Direccion='RUTA 22 Y Alumine Ciudad Neuquen Neu';Provincia='Neuquén';Ciudad='Neuquen';CodPostal='8300';NroSucursal=8;GLN='7798022220089';Observaciones='Abasta'},
+  @{DatosID=7;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Av. Paraguay 2690 Salta Sal';Provincia='Salta';Ciudad='Salta';CodPostal='4126';NroSucursal=9;GLN='7798022220096';Observaciones='Abasta'},
+  @{DatosID=8;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Avenida Juan Bautista Alberdi 4550 CABA CABA';Provincia='Buenos Aires (CABA)';Ciudad='CABA';CodPostal='C1406BXB';NroSucursal=10;GLN='7798022220119';Observaciones='No Abasta'},
+  @{DatosID=9;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Ruta 88 Km 4.5 y Avda Fortunato de la Plaza Mar del Plata BsAs';Provincia='Buenos Aires';Ciudad='Mar del Plata';CodPostal='B7608AQT';NroSucursal=12;GLN='7798022220126';Observaciones='Abasta'},
+  @{DatosID=10;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Avda Don Bosco y Avda Circunvalacion Bahia Blanca BsAs';Provincia='Buenos Aires';Ciudad='Bahia Blanca';CodPostal='8103';NroSucursal=13;GLN='7798022220133';Observaciones='Abasta'},
+  @{DatosID=11;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Carril Rodríguez Peña 2051 Godoy Cruz Men';Provincia='Mendoza';Ciudad='godoy Cruz';CodPostal='5501';NroSucursal=14;GLN='7798022220140';Observaciones=$null},
+  @{DatosID=12;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Ruta 11 y Ruta 16 Rotonda Donnet Resistencia, Chaco';Provincia='Chaco';Ciudad='Resistencia';CodPostal='3500';NroSucursal=15;GLN='7798022220157';Observaciones='Abasta'},
+  @{DatosID=13;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Acc. Este e/Rot. Aerop. y Cir. San Juan San Juan SanJ';Provincia='San Juan';Ciudad='San Juan';CodPostal='5400';NroSucursal=16;GLN='7798022220164';Observaciones='Abasta'},
+  @{DatosID=14;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Av. Gaona 8202 Acc. Oeste Km 38.5 Moreno BsAs';Provincia='Buenos Aires';Ciudad='Moreno';CodPostal='B1741';NroSucursal=18;GLN='7798022220188';Observaciones='Abasta'},
+  @{DatosID=15;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Panamericana Ramal Escobar Km 42.5 Ing. Maschwitz BsAs';Provincia=$null;Ciudad='Ing Maschwitz';CodPostal='1623';NroSucursal=19;GLN='7798022220195';Observaciones='Abasta'},
+  @{DatosID=16;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Ruta 22 Km 1174 al lado de Expofrut Arg. Roca Río';Provincia='Río Negro';Ciudad='Roca';CodPostal='R8332';NroSucursal=20;GLN='7798022220201';Observaciones='Abasta'},
+  @{DatosID=17;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Fernando Elias Llamosas 10290 Posadas Mis';Provincia='Misiones';Ciudad='Posadas';CodPostal='3300';NroSucursal=21;GLN='7798022220218';Observaciones=$null},
+  @{DatosID=18;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Rotonda Ruta 25 y Ruta 3 Trelew 9100 Chu';Provincia='Chubut';Ciudad='trelew';CodPostal='9100';NroSucursal=22;GLN='7798022220225';Observaciones='Abasta'},
+  @{DatosID=19;ClienteID=1000;Telefono=$null;Email=$null;Direccion='colectora, RN9 2055, San Salvador de Jujuy, Jujuy';Provincia='jujuy';Ciudad='Jujuy';CodPostal=$null;NroSucursal=23;GLN='7798022220232';Observaciones='Abasta'},
+  @{DatosID=20;ClienteID=1000;Telefono=$null;Email=$null;Direccion='Av. José María Moreno 930 – CABA – CP 1424';Provincia='Buenos Aires (CABA)';Ciudad='Paque chacabuco';CodPostal='1424';NroSucursal=24;GLN='7798022220249';Observaciones='No Abasta'},
+  @{DatosID=21;ClienteID=5;Telefono='3765-142214';Email=$null;Direccion='Posadas';Provincia='Misiones';Ciudad='Posadas';CodPostal='3300';NroSucursal=1;GLN=$null;Observaciones=$null},
+  @{DatosID=22;ClienteID=6;Telefono='3758-451567';Email=$null;Direccion='Juan de San Martin Nº 70';Provincia='Misiones';Ciudad='Apostoles';CodPostal='3350';NroSucursal=$null;GLN=$null;Observaciones='3758-451567 Cel de Norma Barrios'},
+  @{DatosID=23;ClienteID=7;Telefono='3416-845597';Email='daberdi@gmail.com';Direccion='Guemes 2511';Provincia='Santa Fe';Ciudad='Rosario';CodPostal='2000';NroSucursal=$null;GLN=$null;Observaciones='Redes: @semillarmercado (Dietetica)'},
+  @{DatosID=24;ClienteID=1001;Telefono='3794-532055';Email='kromero@supermax.com.ar';Direccion='Av. Maipu 359 Dpto B ';Provincia='Corrientes';Ciudad='Corrientes';CodPostal=$null;NroSucursal=$null;GLN=$null;Observaciones='Deposito: Av Gral Uriquiza Nº 1802 Ctes capital'},
+  @{DatosID=25;ClienteID=8;Telefono='3758-549343';Email=$null;Direccion='Terminal de apostoles';Provincia='Misiones';Ciudad='Apostoles';CodPostal='3350';NroSucursal=$null;GLN=$null;Observaciones='Local en terminal de Apostoles'}
+)
+foreach ($dato in $datos) {
+  Invoke-RestMethod -Uri "http://localhost:3000/api/datos-clientes" -Method Post -ContentType "application/json" -Body ($dato | ConvertTo-Json -Compress)
+}

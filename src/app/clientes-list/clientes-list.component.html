@@ -1,0 +1,28 @@
+<h2>Clientes</h2>
+<button (click)="mostrarFormularioNuevo()">Nuevo Cliente</button>
+<table *ngIf="!mostrarFormNuevo">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Tipo</th>
+      <th>Numero</th>
+      <th>Nombre/Razón Social</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr *ngFor="let cliente of clientes">
+      <td>{{cliente.ClienteID}}</td>
+      <td>{{cliente.TIPO}}</td>
+      <td>{{cliente.Numero}}</td>
+      <td>{{cliente.NombreRazonSocial}}</td>
+      <td>
+        <button (click)="selectCliente(cliente)">Ver Datos</button>
+        <button (click)="editarCliente(cliente)">Editar</button>
+        <button (click)="deleteCliente(cliente.ClienteID)">Eliminar</button>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<app-cliente-form *ngIf="mostrarFormNuevo || clienteEditando" [cliente]="clienteEditando || nuevoCliente" (guardado)="onGuardado()"></app-cliente-form>
+<app-datos-clientes-list *ngIf="selectedCliente" [clienteId]="selectedCliente.ClienteID"></app-datos-clientes-list>

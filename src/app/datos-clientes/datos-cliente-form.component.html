@@ -1,0 +1,25 @@
+<h3>{{isEdit ? 'Editar Dato de Cliente' : 'Nuevo Dato de Cliente'}}</h3>
+<form (ngSubmit)="save()">
+  
+  <label>ClienteID:</label>
+  <input name="ClienteID" [(ngModel)]="datosCliente.ClienteID" required><br>
+  <label>Teléfono:</label>
+  <input name="Telefono" [(ngModel)]="datosCliente.Telefono"><br>
+  <label>Email:</label>
+  <input name="Email" [(ngModel)]="datosCliente.Email"><br>
+  <label>Dirección:</label>
+  <input name="Direccion" [(ngModel)]="datosCliente.Direccion"><br>
+  <label>Provincia:</label>
+  <input name="Provincia" [(ngModel)]="datosCliente.Provincia"><br>
+  <label>Ciudad:</label>
+  <input name="Ciudad" [(ngModel)]="datosCliente.Ciudad"><br>
+  <label>Código Postal:</label>
+  <input name="CodPostal" [(ngModel)]="datosCliente.CodPostal"><br>
+  <label>Nro Sucursal:</label>
+  <input name="NroSucursal" [(ngModel)]="datosCliente.NroSucursal"><br>
+  <label>GLN:</label>
+  <input name="GLN" [(ngModel)]="datosCliente.GLN"><br>
+  <label>Observaciones:</label>
+  <input name="Observaciones" [(ngModel)]="datosCliente.Observaciones"><br>
+  <button type="submit">Guardar</button>
+</form>
