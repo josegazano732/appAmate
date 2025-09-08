@@ -47,8 +47,12 @@ let db;
     Fecha TEXT,
     NombreFiscal TEXT,
     Sucursal TEXT,
-    ImporteOperacion REAL,
-    Estado TEXT,
+  ImporteOperacion REAL,
+  Estado TEXT,
+  EstadoAprobacion TEXT,
+  EstadoRemito TEXT,
+  EstadoFacturacion TEXT,
+  OrdenCompra TEXT,
     FOREIGN KEY (ClienteID) REFERENCES clientes(ClienteID)
   );`);
 
@@ -64,16 +68,37 @@ let db;
     FOREIGN KEY (NotaPedidoID) REFERENCES notas_pedido(NotaPedidoID)
   );`);
 
+  // Verificar columnas nuevas en notas_pedido y agregarlas si faltan (migra en caliente)
+  try {
+    const cols = await db.all("PRAGMA table_info('notas_pedido')");
+    const existing = new Set(cols.map(c => c.name));
+    const toAdd = [];
+    if (!existing.has('EstadoAprobacion')) toAdd.push("ALTER TABLE notas_pedido ADD COLUMN EstadoAprobacion TEXT;");
+    if (!existing.has('EstadoRemito')) toAdd.push("ALTER TABLE notas_pedido ADD COLUMN EstadoRemito TEXT;");
+    if (!existing.has('EstadoFacturacion')) toAdd.push("ALTER TABLE notas_pedido ADD COLUMN EstadoFacturacion TEXT;");
+    if (!existing.has('OrdenCompra')) toAdd.push("ALTER TABLE notas_pedido ADD COLUMN OrdenCompra TEXT;");
+    for (const sql of toAdd) {
+      try {
+        await db.exec(sql);
+        console.log('DB migration: ejecutado ->', sql.trim());
+      } catch (err) {
+        console.warn('DB migration: no se pudo ejecutar:', sql.trim(), err.message || err);
+      }
+    }
+  } catch (err) {
+    console.warn('DB migration: error al verificar columnas de notas_pedido', err.message || err);
+  }
+
   // Insertar datos de ejemplo si no existen notas
   const countNotas = await db.get('SELECT COUNT(*) as c FROM notas_pedido');
   if (countNotas.c === 0) {
-    await db.run(`INSERT INTO notas_pedido (ClienteID, ListaPrecioID, Fecha, NombreFiscal, Sucursal, ImporteOperacion, Estado) VALUES
-      (6,120,'2024-10-10','Supermercado ejemplo','Posadas',368370.22,'Rechazado'),
-      (5,120,'2012-03-05','Chango Mas','Cordoba',0,'Aprobado'),
-      (3,125,NULL,'Carlos López','Corrientes',0,'Pendiente'),
-      (2,125,'2025-08-24','María Gómez','Posadas',0,'Pendiente'),
-      (3,125,'2025-08-24','Carlos López','Posadas',0,'Pendiente'),
-      (2,125,'2025-08-28','María Gómez','Corrientes',2000,'Pendiente')
+    await db.run(`INSERT INTO notas_pedido (ClienteID, ListaPrecioID, Fecha, NombreFiscal, Sucursal, ImporteOperacion, Estado, EstadoAprobacion, EstadoRemito, EstadoFacturacion, OrdenCompra) VALUES
+      (6,120,'2024-10-10','Supermercado ejemplo','Posadas',368370.22,'Rechazado','Rechazada','Remitido','Facturado','OC-1001'),
+      (5,120,'2012-03-05','Chango Mas','Cordoba',0,'Aprobado','Aprobada','Sin Remito','Sin Facturar',''),
+      (3,125,NULL,'Carlos López','Corrientes',0,'Pendiente','Pendiente','Sin Remito','Sin Facturar',''),
+      (2,125,'2025-08-24','María Gómez','Posadas',0,'Pendiente','Pendiente','Sin Remito','Sin Facturar',''),
+      (3,125,'2025-08-24','Carlos López','Posadas',0,'Pendiente','Pendiente','Sin Remito','Sin Facturar',''),
+      (2,125,'2025-08-28','María Gómez','Corrientes',2000,'Pendiente','Pendiente','Sin Remito','Sin Facturar','OC-2002')
     `);
 
     // Insertar algunos detalles
@@ -180,12 +205,19 @@ app.delete('/api/datos-clientes/:id', async (req, res) => {
 app.get('/api/notas-pedido', async (req, res) => {
   const limit = parseInt(req.query.limit) || null;
   const offset = parseInt(req.query.offset) || 0;
+  const q = req.query.q ? `%${req.query.q}%` : null;
 
-  const totalRow = await db.get('SELECT COUNT(*) as count FROM notas_pedido');
+  let where = '';
+  const params = [];
+  if (q) {
+    where = 'WHERE NombreFiscal LIKE ? OR OrdenCompra LIKE ? OR Fecha LIKE ?';
+    params.push(q, q, q);
+  }
+
+  const totalRow = await db.get(`SELECT COUNT(*) as count FROM notas_pedido ${where}`, params);
   const total = totalRow ? totalRow.count : 0;
 
-  let sql = 'SELECT * FROM notas_pedido ORDER BY NotaPedidoID ASC';
-  const params = [];
+  let sql = `SELECT * FROM notas_pedido ${where} ORDER BY NotaPedidoID ASC`;
   if (limit) {
     sql += ' LIMIT ? OFFSET ?';
     params.push(limit, offset);
@@ -203,9 +235,20 @@ app.get('/api/notas-pedido/:id', async (req, res) => {
 // Crear nota con detalles - espera { nota: {...}, detalles: [...] }
 app.post('/api/notas-pedido', async (req, res) => {
   const { nota, detalles } = req.body;
-  const result = await db.run(`INSERT INTO notas_pedido (ClienteID, ListaPrecioID, Fecha, NombreFiscal, Sucursal, ImporteOperacion, Estado)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    nota.ClienteID, nota.ListaPrecioID, nota.Fecha, nota.NombreFiscal, nota.Sucursal, nota.ImporteOperacion || 0, nota.Estado || 'Pendiente');
+  const result = await db.run(`INSERT INTO notas_pedido (ClienteID, ListaPrecioID, Fecha, NombreFiscal, Sucursal, ImporteOperacion, Estado, EstadoAprobacion, EstadoRemito, EstadoFacturacion, OrdenCompra)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    nota.ClienteID,
+    nota.ListaPrecioID,
+    nota.Fecha,
+    nota.NombreFiscal,
+    nota.Sucursal,
+    nota.ImporteOperacion || 0,
+    nota.Estado || 'Pendiente',
+    nota.EstadoAprobacion || 'Pendiente',
+    nota.EstadoRemito || 'Sin Remito',
+    nota.EstadoFacturacion || 'Sin Facturar',
+    nota.OrdenCompra || ''
+  );
   const notaId = result.lastID;
   if (Array.isArray(detalles)) {
     const insertStmt = await db.prepare(`INSERT INTO nota_detalle (NotaPedidoID, Codigo, ProductoDescripcion, Familia, Precio, Cantidad, PrecioNeto) VALUES (?, ?, ?, ?, ?, ?, ?)`);

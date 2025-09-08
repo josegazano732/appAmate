@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
 import { NotaPedido, NotaDetalle } from './nota.model';
 import { NotasService } from './notas.service';
 
@@ -21,6 +21,40 @@ import { NotasService } from './notas.service';
             <div class="col-md-6 mb-2">
               <label>Nombre Fiscal</label>
               <input class="form-control" [(ngModel)]="nota.NombreFiscal" name="nombreFiscal" />
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-4 mb-2">
+              <label>Orden de Compra</label>
+              <input class="form-control" [(ngModel)]="nota.OrdenCompra" name="ordenCompra" />
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-4 mb-2">
+              <label>Aprobación</label>
+              <select class="form-select" [(ngModel)]="nota.EstadoAprobacion" name="estadoAprobacion">
+                <option value="Aprobada">Aprobada</option>
+                <option value="Rechazada">Rechazada</option>
+                <option value="Pendiente">Pendiente</option>
+              </select>
+            </div>
+            <div class="col-md-4 mb-2">
+              <label>Remito</label>
+              <select class="form-select" [(ngModel)]="nota.EstadoRemito" name="estadoRemito">
+                <option value="Remitido">Remitido</option>
+                <option value="Remitido Parcial">Remitido Parcial</option>
+                <option value="Sin Remito">Sin Remito</option>
+              </select>
+            </div>
+            <div class="col-md-4 mb-2">
+              <label>Facturación</label>
+              <select class="form-select" [(ngModel)]="nota.EstadoFacturacion" name="estadoFacturacion">
+                <option value="Facturado">Facturado</option>
+                <option value="Facturado Parcial">Facturado Parcial</option>
+                <option value="Sin Facturar">Sin Facturar</option>
+              </select>
             </div>
           </div>
 
@@ -83,6 +117,13 @@ export class NotaFormComponent {
   detalles: NotaDetalle[] = [];
 
   constructor(private notasService: NotasService) {}
+
+  ngOnInit() {
+    // si es nota nueva, asegurar valores por defecto
+    if (!this.nota.EstadoAprobacion) this.nota.EstadoAprobacion = 'Pendiente';
+    if (!this.nota.EstadoRemito) this.nota.EstadoRemito = 'Sin Remito';
+    if (!this.nota.EstadoFacturacion) this.nota.EstadoFacturacion = 'Sin Facturar';
+  }
 
   addDetalle() {
     this.detalles.push({ Codigo: '', ProductoDescripcion: '', Familia: '', Precio: 0, Cantidad: 1, PrecioNeto: 0 });

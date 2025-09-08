@@ -7,6 +7,10 @@ export interface NotaPedido {
   Sucursal?: string;
   ImporteOperacion?: number;
   Estado?: string;
+  EstadoAprobacion?: 'Aprobada' | 'Rechazada' | 'Pendiente';
+  EstadoRemito?: 'Remitido' | 'Remitido Parcial' | 'Sin Remito';
+  EstadoFacturacion?: 'Facturado' | 'Facturado Parcial' | 'Sin Facturar';
+  OrdenCompra?: string;
 }
 
 export interface NotaDetalle {

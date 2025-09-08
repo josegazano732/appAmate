@@ -12,8 +12,10 @@ export class NotasService {
     return this.http.get<NotaPedido[]>(`${this.api}/notas-pedido`);
   }
 
-  listPaged(limit: number, offset: number) {
-    return this.http.get<{ items: NotaPedido[]; total: number }>(`${this.api}/notas-pedido`, { params: { limit: String(limit), offset: String(offset) } });
+  listPaged(limit: number, offset: number, q?: string) {
+    const params: any = { limit: String(limit), offset: String(offset) };
+    if (q) params.q = q;
+    return this.http.get<{ items: NotaPedido[]; total: number }>(`${this.api}/notas-pedido`, { params });
   }
 
   get(id: number) {
