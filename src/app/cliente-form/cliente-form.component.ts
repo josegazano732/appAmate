@@ -10,6 +10,7 @@ export class ClienteFormComponent implements OnInit {
   @Input() cliente: Cliente = { ClienteID: 0, TIPO: '', Numero: '', NombreRazonSocial: '' };
   isEdit: boolean = false;
   @Output() guardado = new EventEmitter<void>();
+  @Output() cancelado = new EventEmitter<void>();
   mensaje: string = '';
 
   constructor(private clientesService: ClientesService) {}
@@ -31,5 +32,9 @@ export class ClienteFormComponent implements OnInit {
         this.guardado.emit();
       });
     }
+  }
+
+  cancelar(): void {
+    this.cancelado.emit();
   }
 }

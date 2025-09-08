@@ -1,17 +1,31 @@
-<h2>{{isEdit ? 'Editar Cliente' : 'Nuevo Cliente'}}</h2>
-<form (ngSubmit)="save()">
-  <div *ngIf="isEdit">
-    <label>ID:</label>
-    <input name="ClienteID" [(ngModel)]="cliente.ClienteID" readonly><br>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h2 class="mb-3">{{isEdit ? 'Editar Cliente' : 'Nuevo Cliente'}}</h2>
+    <form (ngSubmit)="save()">
+      <div *ngIf="isEdit" class="mb-3">
+        <label class="form-label">ID:</label>
+        <input name="ClienteID" [(ngModel)]="cliente.ClienteID" readonly class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Tipo:</label>
+        <input name="TIPO" [(ngModel)]="cliente.TIPO" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Numero:</label>
+        <input name="Numero" [(ngModel)]="cliente.Numero" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Nombre/Razón Social:</label>
+        <input name="NombreRazonSocial" [(ngModel)]="cliente.NombreRazonSocial" required class="form-control">
+      </div>
+      <div class="d-flex justify-content-end gap-2">
+        <button type="submit" class="btn btn-success">Guardar</button>
+        <button type="button" class="btn btn-secondary" (click)="cancelar()">Cancelar</button>
+      </div>
+    </form>
+    <div *ngIf="mensaje" class="alert alert-success mt-3">
+      {{mensaje}}
+    </div>
   </div>
-  <label>Tipo:</label>
-  <input name="TIPO" [(ngModel)]="cliente.TIPO"><br>
-  <label>Numero:</label>
-  <input name="Numero" [(ngModel)]="cliente.Numero"><br>
-  <label>Nombre/Razón Social:</label>
-  <input name="NombreRazonSocial" [(ngModel)]="cliente.NombreRazonSocial" required><br>
-  <button type="submit">Guardar</button>
-</form>
-<div *ngIf="mensaje" style="color: green; margin-top: 10px;">
-  {{mensaje}}
 </div>

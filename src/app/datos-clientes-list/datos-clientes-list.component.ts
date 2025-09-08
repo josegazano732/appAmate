@@ -41,6 +41,10 @@ export class DatosClientesListComponent implements OnInit, OnChanges {
     this.selectedDatos = datos;
   }
 
+  cerrarFormularioDatos(): void {
+    this.selectedDatos = undefined;
+  }
+
   nuevoDatoCliente(): void {
     this.selectedDatos = { DatosID: 0, ClienteID: this.clienteId };
   }

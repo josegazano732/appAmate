@@ -10,6 +10,7 @@ export class DatosClienteFormComponent implements OnInit {
   @Input() datosCliente: DatosCliente = { DatosID: 0, ClienteID: 0 };
   @Input() clienteId!: number;
   @Output() guardado = new EventEmitter<void>();
+  @Output() cancelado = new EventEmitter<void>();
   mensaje: string = '';
   isEdit: boolean = false;
 
@@ -21,6 +22,10 @@ export class DatosClienteFormComponent implements OnInit {
     if (!this.datosCliente.ClienteID || this.datosCliente.ClienteID === 0) {
       this.datosCliente.ClienteID = this.clienteId;
     }
+  }
+
+  cancelar(): void {
+    this.cancelado.emit();
   }
 
   save(): void {

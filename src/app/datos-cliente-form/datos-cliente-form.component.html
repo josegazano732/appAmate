@@ -1,25 +1,53 @@
-<!-- Formulario para datos del cliente -->
-<form (ngSubmit)="save()">
-  <label>Teléfono:</label>
-  <input name="Telefono" [(ngModel)]="datosCliente.Telefono"><br>
-  <label>Email:</label>
-  <input name="Email" [(ngModel)]="datosCliente.Email"><br>
-  <label>Dirección:</label>
-  <input name="Direccion" [(ngModel)]="datosCliente.Direccion"><br>
-  <label>Provincia:</label>
-  <input name="Provincia" [(ngModel)]="datosCliente.Provincia"><br>
-  <label>Ciudad:</label>
-  <input name="Ciudad" [(ngModel)]="datosCliente.Ciudad"><br>
-  <label>Código Postal:</label>
-  <input name="CodPostal" [(ngModel)]="datosCliente.CodPostal"><br>
-  <label>Nro Sucursal:</label>
-  <input name="NroSucursal" [(ngModel)]="datosCliente.NroSucursal"><br>
-  <label>GLN:</label>
-  <input name="GLN" [(ngModel)]="datosCliente.GLN"><br>
-  <label>Observaciones:</label>
-  <input name="Observaciones" [(ngModel)]="datosCliente.Observaciones"><br>
-  <button type="submit">Guardar</button>
-</form>
-<div *ngIf="mensaje" style="color: green; margin-top: 10px;">
-  {{mensaje}}
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h2 class="mb-3">Datos del Cliente</h2>
+    <form (ngSubmit)="save()">
+      <div class="mb-3">
+        <label class="form-label">Teléfono:</label>
+        <input name="Telefono" [(ngModel)]="datosCliente.Telefono" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Email:</label>
+        <input name="Email" [(ngModel)]="datosCliente.Email" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Dirección:</label>
+        <input name="Direccion" [(ngModel)]="datosCliente.Direccion" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Provincia:</label>
+        <input name="Provincia" [(ngModel)]="datosCliente.Provincia" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Ciudad:</label>
+        <input name="Ciudad" [(ngModel)]="datosCliente.Ciudad" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Código Postal:</label>
+        <input name="CodPostal" [(ngModel)]="datosCliente.CodPostal" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Nro Sucursal:</label>
+        <input name="NroSucursal" [(ngModel)]="datosCliente.NroSucursal" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">GLN:</label>
+        <input name="GLN" [(ngModel)]="datosCliente.GLN" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Observaciones:</label>
+        <input name="Observaciones" [(ngModel)]="datosCliente.Observaciones" class="form-control">
+      </div>
+      <div class="d-flex justify-content-end gap-2">
+        <button type="submit" class="btn btn-success">Guardar</button>
+        <button type="button" class="btn btn-outline-dark d-flex align-items-center" (click)="cancelar()">
+          <span class="material-icons" style="font-size:18px;">close</span> Cerrar
+        </button>
+      </div>
+    </form>
+    <div *ngIf="mensaje" class="alert alert-success mt-3">
+      {{mensaje}}
+    </div>
+  </div>
 </div>

@@ -1,14 +1,25 @@
 
 
-    <span>CRUD de Clientes y Datos de Clientes</span>
-    <nav>
-      <a routerLink="/">Clientes</a> |
-      <a routerLink="/clientes/new">Nuevo Cliente</a>
-    </nav>
-    <router-outlet></router-outlet>
+<div class="container">
+  <div class="row justify-content-center mb-4">
+    <div class="col-md-8">
+      <div class="card p-4 text-center">
+        <h1 class="mb-3" style="color:#007bff;">CRUD de Clientes y Datos de Clientes</h1>
+        <nav class="mb-2">
+          <a routerLink="/" class="btn btn-outline-primary mx-2">Clientes</a>
+          <a routerLink="/clientes/new" class="btn btn-primary mx-2">Nuevo Cliente</a>
+        </nav>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-12">
+      <router-outlet></router-outlet>
+    </div>
+  </div>
+</div>
 
-  
 
-    
 
-  
+
+

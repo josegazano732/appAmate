@@ -41,6 +41,11 @@ export class ClientesListComponent {
     this.selectedCliente = cliente;
   }
 
+  cerrarFormulario() {
+    this.mostrarFormNuevo = false;
+    this.clienteEditando = null;
+  }
+
   deleteCliente(id: number) {
     this.clientesService.delete(id).subscribe(() => {
       this.loadClientes();
