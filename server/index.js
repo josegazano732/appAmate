@@ -42,9 +42,31 @@ let db;
 })();
 
 // CRUD Clientes
+// Soporte para paginación: ?limit=10&offset=0&q=texto
 app.get('/api/clientes', async (req, res) => {
-  const clientes = await db.all('SELECT * FROM clientes');
-  res.json(clientes);
+  const limit = parseInt(req.query.limit) || null;
+  const offset = parseInt(req.query.offset) || 0;
+  const q = req.query.q ? `%${req.query.q}%` : null;
+
+  let where = '';
+  const params = [];
+  if (q) {
+    where = 'WHERE NombreRazonSocial LIKE ? OR Numero LIKE ?';
+    params.push(q, q);
+  }
+
+  // Obtener total
+  const totalRow = await db.get(`SELECT COUNT(*) as count FROM clientes ${where}`, params);
+  const total = totalRow ? totalRow.count : 0;
+
+  let sql = `SELECT * FROM clientes ${where} ORDER BY ClienteID DESC`;
+  if (limit) {
+    sql += ' LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+  }
+
+  const clientes = await db.all(sql, params);
+  res.json({ items: clientes, total });
 });
 
 app.get('/api/clientes/:id', async (req, res) => {

@@ -13,6 +13,13 @@ export class ClientesService {
     return this.http.get<Cliente[]>(this.apiUrl);
   }
 
+  // Paginación server-side: retorna items y total
+  getPaged(limit: number, offset: number, q?: string): Observable<{ items: Cliente[]; total: number }> {
+    const params: any = { limit: String(limit), offset: String(offset) };
+    if (q) params.q = q;
+    return this.http.get<{ items: Cliente[]; total: number }>(this.apiUrl, { params });
+  }
+
   getById(id: number): Observable<Cliente> {
     return this.http.get<Cliente>(`${this.apiUrl}/${id}`);
   }
