@@ -59,7 +59,7 @@ app.get('/api/clientes', async (req, res) => {
   const totalRow = await db.get(`SELECT COUNT(*) as count FROM clientes ${where}`, params);
   const total = totalRow ? totalRow.count : 0;
 
-  let sql = `SELECT * FROM clientes ${where} ORDER BY ClienteID DESC`;
+  let sql = `SELECT * FROM clientes ${where} ORDER BY ClienteID ASC`;
   if (limit) {
     sql += ' LIMIT ? OFFSET ?';
     params.push(limit, offset);
