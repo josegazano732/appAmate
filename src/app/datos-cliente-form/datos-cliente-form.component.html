@@ -1,53 +1,67 @@
 
-<div class="card mb-4">
+<div class="card mb-4 shadow-sm">
   <div class="card-body">
-    <h2 class="mb-3">Datos del Cliente</h2>
-    <form (ngSubmit)="save()">
-      <div class="mb-3">
-        <label class="form-label">Teléfono:</label>
-        <input name="Telefono" [(ngModel)]="datosCliente.Telefono" class="form-control">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h3 class="mb-0">{{ isEdit ? 'Editar dato del cliente' : 'Agregar dato para el cliente' }}</h3>
+      <button class="btn btn-outline-secondary btn-sm" (click)="cancelar()" aria-label="Cerrar formulario"><i class="bi bi-x-lg"></i></button>
+    </div>
+
+    <form (ngSubmit)="save()" #datosForm="ngForm" novalidate>
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label for="telefono" class="form-label">Teléfono</label>
+          <input id="telefono" name="Telefono" [(ngModel)]="datosCliente.Telefono" class="form-control form-control-sm" type="text" aria-label="Teléfono">
+        </div>
+        <div class="col-md-6 mb-3">
+          <label for="email" class="form-label">Email</label>
+          <input id="email" name="Email" [(ngModel)]="datosCliente.Email" class="form-control form-control-sm" type="email" aria-label="Email">
+        </div>
       </div>
+
       <div class="mb-3">
-        <label class="form-label">Email:</label>
-        <input name="Email" [(ngModel)]="datosCliente.Email" class="form-control">
+        <label for="direccion" class="form-label">Dirección</label>
+        <input id="direccion" name="Direccion" [(ngModel)]="datosCliente.Direccion" class="form-control form-control-sm" aria-label="Dirección">
       </div>
+
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          <label for="provincia" class="form-label">Provincia</label>
+          <input id="provincia" name="Provincia" [(ngModel)]="datosCliente.Provincia" class="form-control form-control-sm" aria-label="Provincia">
+        </div>
+        <div class="col-md-4 mb-3">
+          <label for="ciudad" class="form-label">Ciudad</label>
+          <input id="ciudad" name="Ciudad" [(ngModel)]="datosCliente.Ciudad" class="form-control form-control-sm" aria-label="Ciudad">
+        </div>
+        <div class="col-md-4 mb-3">
+          <label for="codpostal" class="form-label">Código Postal</label>
+          <input id="codpostal" name="CodPostal" [(ngModel)]="datosCliente.CodPostal" class="form-control form-control-sm" aria-label="Código Postal">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label for="nrosucursal" class="form-label">Nro Sucursal</label>
+          <input id="nrosucursal" name="NroSucursal" [(ngModel)]="datosCliente.NroSucursal" class="form-control form-control-sm" aria-label="Número de sucursal">
+        </div>
+        <div class="col-md-6 mb-3">
+          <label for="gln" class="form-label">GLN</label>
+          <input id="gln" name="GLN" [(ngModel)]="datosCliente.GLN" class="form-control form-control-sm" aria-label="GLN">
+        </div>
+      </div>
+
       <div class="mb-3">
-        <label class="form-label">Dirección:</label>
-        <input name="Direccion" [(ngModel)]="datosCliente.Direccion" class="form-control">
+        <label for="observaciones" class="form-label">Observaciones</label>
+        <textarea id="observaciones" name="Observaciones" [(ngModel)]="datosCliente.Observaciones" class="form-control form-control-sm" rows="3" aria-label="Observaciones"></textarea>
       </div>
-      <div class="mb-3">
-        <label class="form-label">Provincia:</label>
-        <input name="Provincia" [(ngModel)]="datosCliente.Provincia" class="form-control">
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Ciudad:</label>
-        <input name="Ciudad" [(ngModel)]="datosCliente.Ciudad" class="form-control">
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Código Postal:</label>
-        <input name="CodPostal" [(ngModel)]="datosCliente.CodPostal" class="form-control">
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Nro Sucursal:</label>
-        <input name="NroSucursal" [(ngModel)]="datosCliente.NroSucursal" class="form-control">
-      </div>
-      <div class="mb-3">
-        <label class="form-label">GLN:</label>
-        <input name="GLN" [(ngModel)]="datosCliente.GLN" class="form-control">
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Observaciones:</label>
-        <input name="Observaciones" [(ngModel)]="datosCliente.Observaciones" class="form-control">
-      </div>
+
       <div class="d-flex justify-content-end gap-2">
-        <button type="submit" class="btn btn-success">Guardar</button>
-        <button type="button" class="btn btn-outline-dark d-flex align-items-center" (click)="cancelar()">
-          <span class="material-icons" style="font-size:18px;">close</span> Cerrar
-        </button>
+        <button type="submit" class="btn btn-primary btn-sm" [disabled]="datosForm.invalid"><i class="bi bi-save"></i> Guardar</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" (click)="cancelar()"><i class="bi bi-x-circle"></i> Cancelar</button>
       </div>
     </form>
-    <div *ngIf="mensaje" class="alert alert-success mt-3">
-      {{mensaje}}
+
+    <div *ngIf="mensaje" class="alert alert-success mt-3" role="status">
+      {{ mensaje }}
     </div>
   </div>
 </div>

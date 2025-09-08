@@ -37,9 +37,12 @@
             <td>{{dato.GLN}}</td>
             <td>{{dato.Observaciones}}</td>
             <td>
-              <button class="btn btn-warning btn-sm mx-1" (click)="selectDatos(dato)">Editar</button>
-              <button class="btn btn-danger btn-sm mx-1" (click)="deleteDatos(dato.DatosID)">Eliminar</button>
+              <button class="btn btn-warning btn-sm mx-1" (click)="selectDatos(dato)" title="Editar"><i class="bi bi-pencil-square"></i></button>
+              <button class="btn btn-danger btn-sm mx-1" (click)="deleteDatos(dato.DatosID)" title="Eliminar"><i class="bi bi-trash"></i></button>
             </td>
+          </tr>
+          <tr *ngIf="datos.length === 0">
+            <td colspan="11" class="text-center text-muted">No hay datos para este cliente.</td>
           </tr>
         </tbody>
       </table>

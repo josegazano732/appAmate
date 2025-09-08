@@ -42,7 +42,9 @@ export class DatosClientesListComponent implements OnInit, OnChanges {
   }
 
   cerrarFormularioDatos(): void {
-    this.selectedDatos = undefined;
+  this.selectedDatos = undefined;
+  // refrescar lista cuando se cierre el formulario
+  this.loadDatos();
   }
 
   nuevoDatoCliente(): void {
@@ -50,6 +52,9 @@ export class DatosClientesListComponent implements OnInit, OnChanges {
   }
 
   deleteDatos(id: number): void {
+    if (!confirm('¿Confirma eliminar este dato del cliente?')) {
+      return;
+    }
     this.datosService.delete(id).subscribe(() => {
       this.loadDatos();
       this.selectedDatos = undefined;

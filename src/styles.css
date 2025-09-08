@@ -32,4 +32,17 @@ body {
 	box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
 }
 
+.bi {
+	font-size: 1rem;
+}
+
+.action-cell button {
+	width: 36px;
+	height: 36px;
+	padding: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
 /* ...puedes agregar más estilos personalizados aquí... */

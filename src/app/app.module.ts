@@ -15,7 +15,7 @@ import { FormsModule } from '@angular/forms';
 import { ClientesListComponent } from './clientes-list/clientes-list.component';
 import { ClienteFormComponent } from './cliente-form/cliente-form.component';
 import { DatosClientesListComponent } from './datos-clientes-list/datos-clientes-list.component';
-import { DatosClienteFormComponent } from './datos-clientes/datos-cliente-form.component';
+import { DatosClienteFormComponent } from './datos-cliente-form/datos-cliente-form.component';
 
 @NgModule({
   declarations: [
