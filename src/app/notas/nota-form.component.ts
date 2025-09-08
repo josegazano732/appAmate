@@ -49,9 +49,16 @@ import { NotasService } from './notas.service';
                 <td><input class="form-control form-control-sm" [(ngModel)]="d.Codigo" name="codigo{{i}}" /></td>
                 <td><input class="form-control form-control-sm" [(ngModel)]="d.ProductoDescripcion" name="prod{{i}}" /></td>
                 <td><input class="form-control form-control-sm" [(ngModel)]="d.Familia" name="fam{{i}}" /></td>
-                <td><input type="number" class="form-control form-control-sm" [(ngModel)]="d.Precio" name="precio{{i}}" (ngModelChange)="updateDetalle(i)" /></td>
+                <td>
+                  <div class="input-group input-group-sm">
+                    <input type="number" class="form-control form-control-sm" [(ngModel)]="d.Precio" name="precio{{i}}" (ngModelChange)="updateDetalle(i)" />
+                    <span class="input-group-text">{{ d.Precio | arsCurrency }}</span>
+                  </div>
+                </td>
                 <td><input type="number" class="form-control form-control-sm" [(ngModel)]="d.Cantidad" name="cant{{i}}" (ngModelChange)="updateDetalle(i)" /></td>
-                <td><input type="number" class="form-control form-control-sm" [(ngModel)]="d.PrecioNeto" name="pn{{i}}" readonly /></td>
+                <td>
+                  <input type="text" class="form-control form-control-sm" [value]="d.PrecioNeto | arsCurrency" name="pn{{i}}" readonly />
+                </td>
                 <td><button class="btn btn-sm btn-danger" type="button" (click)="removeDetalle(i)">X</button></td>
               </tr>
             </tbody>
@@ -59,7 +66,7 @@ import { NotasService } from './notas.service';
           <button class="btn btn-sm btn-secondary" type="button" (click)="addDetalle()">Agregar detalle</button>
 
           <div class="mt-3">
-            <div class="mb-2">Importe operación: <strong>{{ nota.ImporteOperacion | number:'1.2-2' }}</strong></div>
+            <div class="mb-2">Importe operación: <strong>{{ nota.ImporteOperacion | arsCurrency }}</strong></div>
             <button class="btn btn-primary" type="submit">Guardar Nota</button>
             <button class="btn btn-secondary ms-2" type="button" (click)="cancelar()">Cancelar</button>
           </div>

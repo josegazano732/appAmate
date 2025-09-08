@@ -20,6 +20,7 @@ import { ClienteFormComponent } from './cliente-form/cliente-form.component';
 import { DatosClientesListComponent } from './datos-clientes-list/datos-clientes-list.component';
 import { DatosClienteFormComponent } from './datos-cliente-form/datos-cliente-form.component';
 import { BreadcrumbComponent } from './shared/breadcrumb.component';
+import { SharedModule } from './shared/shared.module';
 // notas components moved to lazy module
 
 @NgModule({
@@ -37,7 +38,8 @@ import { BreadcrumbComponent } from './shared/breadcrumb.component';
   CommonModule,
     FormsModule,
     HttpClientModule,
-    RouterModule.forRoot(routes)
+  RouterModule.forRoot(routes),
+  SharedModule
   ],
   providers: [NotasService],
   bootstrap: [AppComponent]

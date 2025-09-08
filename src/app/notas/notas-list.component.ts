@@ -23,7 +23,7 @@ import { NotasService } from './notas.service';
               <td>{{n.ClienteID}}</td>
               <td>{{n.Fecha}}</td>
               <td>{{n.NombreFiscal}}</td>
-              <td>{{n.ImporteOperacion | number:'1.2-2'}}</td>
+              <td>{{n.ImporteOperacion | arsCurrency}}</td>
             </tr>
           </tbody>
         </table>
