@@ -29,6 +29,8 @@
             <th>Tipo</th>
             <th>Numero</th>
             <th>Nombre/Razón Social</th>
+            <th>Provincia</th>
+            <th>Localidad</th>
             <th>Acciones</th>
           </tr>
         </thead>
@@ -38,6 +40,8 @@
             <td>{{cliente.TIPO}}</td>
             <td>{{cliente.Numero}}</td>
             <td>{{cliente.NombreRazonSocial}}</td>
+            <td>{{ cliente.Provincia || '-' }}</td>
+            <td>{{ cliente.Ciudad || '-' }}</td>
             <td>
               <button class="btn btn-info btn-sm mx-1" (click)="selectCliente(cliente)" title="Ver Datos"><i class="bi bi-eye"></i></button>
               <button class="btn btn-warning btn-sm mx-1" (click)="editarCliente(cliente)" title="Editar"><i class="bi bi-pencil-square"></i></button>
@@ -46,7 +50,7 @@
             </td>
           </tr>
           <tr *ngIf="clientesFiltrados.length === 0">
-            <td colspan="5" class="text-center text-muted">No hay clientes para mostrar.</td>
+            <td colspan="7" class="text-center text-muted">No hay clientes para mostrar.</td>
           </tr>
         </tbody>
         </table>

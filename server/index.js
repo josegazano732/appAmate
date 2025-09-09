@@ -284,13 +284,29 @@ app.get('/api/clientes', async (req, res) => {
   const totalRow = await db.get(`SELECT COUNT(*) as count FROM clientes ${where}`, params);
   const total = totalRow ? totalRow.count : 0;
 
-  let sql = `SELECT * FROM clientes ${where} ORDER BY ClienteID ASC`;
+  // Seleccionar clientes y traer Provincia/Ciudad del primer registro en datos_clientes si existe
+  let sql = `SELECT c.*, (
+    SELECT Provincia FROM datos_clientes dc WHERE dc.ClienteID = c.ClienteID LIMIT 1
+  ) as Provincia, (
+    SELECT Ciudad FROM datos_clientes dc WHERE dc.ClienteID = c.ClienteID LIMIT 1
+  ) as Ciudad
+  FROM clientes c ${where} ORDER BY c.ClienteID ASC`;
   if (limit) {
     sql += ' LIMIT ? OFFSET ?';
     params.push(limit, offset);
   }
 
   const clientes = await db.all(sql, params);
+  // Adjuntar todas las direcciones (datos_clientes) por cliente para permitir mostrar múltiples domicilios
+  for (const c of clientes) {
+    try {
+      const direcciones = await db.all('SELECT DatosID, Direccion, Provincia, Ciudad, CodPostal, NroSucursal, Telefono, Email FROM datos_clientes WHERE ClienteID = ? ORDER BY DatosID ASC', c.ClienteID);
+      c.Direcciones = direcciones || [];
+    } catch (e) {
+      c.Direcciones = [];
+    }
+  }
+
   res.json({ items: clientes, total });
 });
 
