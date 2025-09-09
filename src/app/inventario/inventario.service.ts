@@ -23,7 +23,8 @@ export class InventarioService {
   createSector(s: any) { return this.http.post(`${this.api}/sectores`, s); }
 
   // Stock
-  listStock() { return this.http.get<any[]>(`${this.api}/stock`); }
+  // listStock acepta un objeto de filtros opcional que se envía como query params
+  listStock(filters?: any) { return this.http.get<any[]>(`${this.api}/stock`, { params: filters || {} as any }); }
   createStock(s: any) { return this.http.post(`${this.api}/stock`, s); }
 
   // Movimientos

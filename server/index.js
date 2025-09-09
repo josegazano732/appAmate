@@ -592,13 +592,32 @@ app.post('/api/sectores', async (req, res) => {
 
 // Stock list
 app.get('/api/stock', async (req, res) => {
-  const sql = `SELECT st.StockID, p.Codigo, p.ProductoDescripcion, p.TipoUnidad, d.Nombre as Deposito, se.Nombre as Sector, st.Unidad, st.Pack, st.Pallets
-    FROM stock st
-    LEFT JOIN productos p ON p.ProductoID = st.ProductoID
-    LEFT JOIN depositos d ON d.DepositoID = st.DepositoID
-    LEFT JOIN sectores se ON se.SectorID = st.SectorID`;
-  const rows = await db.all(sql);
-  res.json(rows);
+  try {
+    const { Codigo, ProductoDescripcion, TipoUnidad, Deposito, Sector } = req.query;
+    const whereParts = [];
+    const params = [];
+    if (Codigo) { whereParts.push('p.Codigo LIKE ?'); params.push(`%${Codigo}%`); }
+    if (ProductoDescripcion) { whereParts.push('p.ProductoDescripcion LIKE ?'); params.push(`%${ProductoDescripcion}%`); }
+    if (TipoUnidad) { whereParts.push('p.TipoUnidad LIKE ?'); params.push(`%${TipoUnidad}%`); }
+    if (Deposito) { whereParts.push('d.Nombre LIKE ?'); params.push(`%${Deposito}%`); }
+    if (Sector) { whereParts.push('se.Nombre LIKE ?'); params.push(`%${Sector}%`); }
+
+    let sql = `SELECT st.StockID, p.Codigo, p.ProductoDescripcion, p.TipoUnidad, d.Nombre as Deposito, se.Nombre as Sector, st.Unidad, st.Pack, st.Pallets
+      FROM stock st
+      LEFT JOIN productos p ON p.ProductoID = st.ProductoID
+      LEFT JOIN depositos d ON d.DepositoID = st.DepositoID
+      LEFT JOIN sectores se ON se.SectorID = st.SectorID`;
+
+    if (whereParts.length) sql += ' WHERE ' + whereParts.join(' AND ');
+
+    sql += ' ORDER BY p.Codigo ASC';
+
+    const rows = await db.all(sql, params);
+    res.json(rows);
+  } catch (err) {
+    console.error('Error GET /api/stock', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
 });
 
 // Crear o actualizar stock (upsert)
