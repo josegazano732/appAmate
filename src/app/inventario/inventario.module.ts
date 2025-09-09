@@ -6,6 +6,7 @@ import { ProductoFormComponent } from './producto-form.component';
 import { DepositoSectorFormComponent } from './deposito-sector-form.component';
 import { StockListComponent } from './stock-list.component';
 import { MovimientoFormComponent } from './movimiento-form.component';
+import { MovimientoListComponent } from './movimiento-list.component';
 import { ProductosListComponent } from './productos-list.component';
 
 const routes: Routes = [
@@ -14,11 +15,12 @@ const routes: Routes = [
   { path: 'productos/new', component: ProductoFormComponent },
   { path: 'productos/edit/:id', component: ProductoFormComponent },
   { path: 'depositos', component: DepositoSectorFormComponent },
+  { path: 'movimientos', component: MovimientoListComponent },
   { path: 'movimientos/new', component: MovimientoFormComponent }
 ];
 
 @NgModule({
-  declarations: [ProductoFormComponent, DepositoSectorFormComponent, StockListComponent, MovimientoFormComponent, ProductosListComponent],
+  declarations: [ProductoFormComponent, DepositoSectorFormComponent, StockListComponent, MovimientoFormComponent, ProductosListComponent, MovimientoListComponent],
   imports: [CommonModule, FormsModule, RouterModule.forChild(routes)]
 })
 export class InventarioModule {}

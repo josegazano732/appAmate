@@ -19,6 +19,7 @@ export class InventarioService {
   listDepositos() { return this.http.get<any[]>(`${this.api}/depositos`); }
   createDeposito(d: any) { return this.http.post(`${this.api}/depositos`, d); }
   listSectores() { return this.http.get<any[]>(`${this.api}/sectores`); }
+  listSectoresByDeposito(depositoId:any) { return this.http.get<any[]>(`${this.api}/sectores`, { params: { depositoId } }); }
   createSector(s: any) { return this.http.post(`${this.api}/sectores`, s); }
 
   // Stock
@@ -27,4 +28,6 @@ export class InventarioService {
 
   // Movimientos
   createMovimiento(m: any) { return this.http.post(`${this.api}/movimientos`, m); }
+  listMovimientos() { return this.http.get<any[]>(`${this.api}/movimientos`); }
+  getMovimiento(id:any) { return this.http.get<any>(`${this.api}/movimientos/${id}`); }
 }

@@ -5,6 +5,7 @@ import express from 'express';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import cors from 'cors';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -116,6 +117,21 @@ let db;
     SectorID INTEGER PRIMARY KEY AUTOINCREMENT,
     Nombre TEXT
   );`);
+  // Añadir columna DepositoID a sectores si no existe (relacionar sector con deposito)
+  try {
+    const secCols = await db.all("PRAGMA table_info('sectores')");
+    const secExisting = new Set(secCols.map(c => c.name));
+    if (!secExisting.has('DepositoID')) {
+      try {
+        await db.exec("ALTER TABLE sectores ADD COLUMN DepositoID INTEGER;");
+        console.log('DB migration: ejecutado -> ALTER TABLE sectores ADD COLUMN DepositoID INTEGER;');
+      } catch (err) {
+        console.warn('DB migration sectores: no se pudo ejecutar ALTER TABLE DepositoID', err.message || err);
+      }
+    }
+  } catch (err) {
+    console.warn('DB migration sectores: error al verificar columnas', err.message || err);
+  }
 
   await db.exec(`CREATE TABLE IF NOT EXISTS stock (
     StockID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -462,13 +478,26 @@ app.post('/api/depositos', async (req, res) => {
 });
 
 app.get('/api/sectores', async (req, res) => {
-  const s = await db.all('SELECT * FROM sectores');
-  res.json(s);
+  try {
+    const depositoId = req.query.depositoId ? parseInt(req.query.depositoId) : null;
+    let rows;
+    if (depositoId) rows = await db.all('SELECT * FROM sectores WHERE DepositoID = ? ORDER BY SectorID ASC', depositoId);
+    else rows = await db.all('SELECT * FROM sectores ORDER BY SectorID ASC');
+    res.json(rows);
+  } catch (err) {
+    console.error('Error GET /api/sectores', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
 });
 app.post('/api/sectores', async (req, res) => {
-  const { Nombre } = req.body;
-  const r = await db.run('INSERT INTO sectores (Nombre) VALUES (?)', Nombre);
-  res.json({ ok: true, SectorID: r.lastID });
+  try {
+    const { Nombre, DepositoID } = req.body;
+    const r = await db.run('INSERT INTO sectores (Nombre, DepositoID) VALUES (?, ?)', Nombre, DepositoID || null);
+    res.json({ ok: true, SectorID: r.lastID });
+  } catch (err) {
+    console.error('Error POST /api/sectores', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
 });
 
 // Stock list
@@ -717,7 +746,44 @@ app.post('/api/movimientos', async (req, res) => {
   }
 });
 
+// Listar movimientos
+app.get('/api/movimientos', async (req, res) => {
+  try {
+    const items = await db.all('SELECT * FROM movimientos ORDER BY MovimientoID DESC');
+    res.json(items);
+  } catch (err) {
+    console.error('Error GET /api/movimientos', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Obtener movimiento con detalles
+app.get('/api/movimientos/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const movimiento = await db.get('SELECT * FROM movimientos WHERE MovimientoID = ?', id);
+    const detalles = await db.all('SELECT * FROM movimiento_detalle WHERE MovimientoID = ?', id);
+    res.json({ movimiento, detalles });
+  } catch (err) {
+    console.error('Error GET /api/movimientos/:id', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
 const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor API escuchando en puerto ${PORT}`);
+// Mejor logueo y binding explícito para evitar problemas de binding en Windows
+process.on('uncaughtException', (err) => {
+  console.error('UncaughtException:', err && (err.stack || err.message || err));
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('UnhandledRejection:', reason && (reason.stack || reason));
+});
+
+const HOST = '0.0.0.0';
+const server = app.listen(PORT, HOST, () => {
+  console.log(`Servidor API escuchando en puerto ${PORT} bind=${HOST}`);
+  try {
+    const nets = os.networkInterfaces();
+    console.log('Interfaces de red:', Object.keys(nets).map(k => ({ iface: k, addrs: nets[k].map(a => ({address: a.address, family: a.family, internal: a.internal})) })));
+  } catch(e) { console.warn('No se pudieron listar interfaces:', e && e.message); }
 });
