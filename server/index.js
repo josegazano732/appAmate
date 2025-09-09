@@ -369,6 +369,198 @@ app.get('/api/notas-pedido/:id', async (req, res) => {
   res.json({ nota, detalles });
 });
 
+// Preparar remito: devuelve detalle mapeado (ProductoID/VarianteID y medida sugerida) para mostrar en UI
+app.get('/api/notas-pedido/:id/remito', async (req, res) => {
+  try {
+    const notaId = req.params.id;
+  const depositoId = req.query.depositoId ? parseInt(req.query.depositoId) : null;
+    const nota = await db.get('SELECT * FROM notas_pedido WHERE NotaPedidoID = ?', notaId);
+    if (!nota) return res.status(404).json({ ok: false, error: 'Nota no encontrada' });
+    const detalles = await db.all('SELECT * FROM nota_detalle WHERE NotaPedidoID = ?', notaId);
+    const mapped = [];
+    for (const d of detalles) {
+      const codigo = d.Codigo;
+      // buscar variante por codigo
+      const variante = await db.get('SELECT * FROM producto_variantes WHERE Codigo = ?', codigo);
+      if (variante) {
+        mapped.push({ Codigo: codigo, VarianteID: variante.VarianteID, ProductoID: variante.ProductoID, Cantidad: d.Cantidad || 0, Medida: variante.Medida || 'unidad' });
+        continue;
+      }
+      // fallback: buscar producto por codigo
+      const producto = await db.get('SELECT * FROM productos WHERE Codigo = ?', codigo);
+      if (producto) {
+        mapped.push({ Codigo: codigo, ProductoID: producto.ProductoID, Cantidad: d.Cantidad || 0, Medida: producto.DefaultMeasure || 'unidad' });
+        continue;
+      }
+      // sin mapping
+      mapped.push({ Codigo: codigo, Cantidad: d.Cantidad || 0, Medida: 'unidad' });
+    }
+    // If caller requested availability for a specific deposito, compute available per line
+    if (depositoId) {
+      const withAvail = [];
+      for (const m of mapped) {
+        // determine productID and unitsPerPack/packsPerPallet
+        let variante = null;
+        if (m.VarianteID) variante = await db.get('SELECT * FROM producto_variantes WHERE VarianteID = ?', m.VarianteID);
+        const producto = m.ProductoID ? await db.get('SELECT * FROM productos WHERE ProductoID = ?', m.ProductoID) : null;
+        const unitsPerPack = variante ? (Number(variante.UnitsPerPack) || 1) : (producto ? (Number(producto.UnitsPerPack) || 1) : 1);
+        const packsPerPallet = variante ? (Number(variante.PacksPerPallet) || 1) : (producto ? (Number(producto.PacksPerPallet) || 1) : 1);
+        // normalize requested to units
+        const med = String(m.Medida || 'unidad').toLowerCase();
+        const reqCantidad = Number(m.Cantidad) || 0;
+        let reqUnits = 0;
+        if (med === 'unidad' || med === 'u') reqUnits = reqCantidad;
+        else if (med === 'pack') reqUnits = reqCantidad * unitsPerPack;
+        else if (med === 'pallet' || med === 'pallets') reqUnits = reqCantidad * packsPerPallet * unitsPerPack;
+        else reqUnits = reqCantidad;
+        // sum available units for this product in deposito across sectors
+        let availableUnits = 0;
+        if (m.ProductoID) {
+          const rows = await db.all('SELECT Unidad, Pack, Pallets FROM stock WHERE ProductoID = ? AND DepositoID = ?', m.ProductoID, depositoId);
+          for (const r of rows) {
+            const u = (Number(r.Unidad) || 0) + (Number(r.Pack) || 0) * unitsPerPack + (Number(r.Pallets) || 0) * unitsPerPack * packsPerPallet;
+            availableUnits += u;
+          }
+        }
+        withAvail.push(Object.assign({}, m, { requestedUnits: reqUnits, availableUnits }));
+      }
+      return res.json({ nota, detalles: withAvail });
+    }
+
+    res.json({ nota, detalles: mapped });
+  } catch (err) {
+    console.error('Error GET /api/notas-pedido/:id/remito', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Devuelve lista de depositos con disponibilidad para los códigos de la nota (agregado por deposito)
+app.get('/api/notas-pedido/:id/depositos-disponibles', async (req, res) => {
+  try {
+    const notaId = req.params.id;
+    const nota = await db.get('SELECT * FROM notas_pedido WHERE NotaPedidoID = ?', notaId);
+    if (!nota) return res.status(404).json({ ok: false, error: 'Nota no encontrada' });
+    const detalles = await db.all('SELECT * FROM nota_detalle WHERE NotaPedidoID = ?', notaId);
+    const depositos = await db.all('SELECT * FROM depositos ORDER BY DepositoID ASC');
+    const out = [];
+    for (const d of depositos) {
+      let anyAvailable = false;
+      const details = [];
+      for (const det of detalles) {
+        const codigo = det.Codigo;
+        const variante = await db.get('SELECT * FROM producto_variantes WHERE Codigo = ?', codigo);
+        const producto = variante ? await db.get('SELECT * FROM productos WHERE ProductoID = ?', variante.ProductoID) : await db.get('SELECT * FROM productos WHERE Codigo = ?', codigo);
+        const prodId = variante ? variante.ProductoID : (producto ? producto.ProductoID : null);
+        if (!prodId) { details.push({ Codigo: codigo, availableUnits: 0 }); continue; }
+        const unitsPerPack = variante ? (Number(variante.UnitsPerPack) || 1) : (producto ? (Number(producto.UnitsPerPack) || 1) : 1);
+        const packsPerPallet = variante ? (Number(variante.PacksPerPallet) || 1) : (producto ? (Number(producto.PacksPerPallet) || 1) : 1);
+        const rows = await db.all('SELECT Unidad, Pack, Pallets FROM stock WHERE ProductoID = ? AND DepositoID = ?', prodId, d.DepositoID);
+        let availableUnits = 0;
+        for (const r of rows) availableUnits += (Number(r.Unidad) || 0) + (Number(r.Pack) || 0) * unitsPerPack + (Number(r.Pallets) || 0) * unitsPerPack * packsPerPallet;
+        if (availableUnits > 0) anyAvailable = true;
+        details.push({ Codigo: codigo, availableUnits });
+      }
+      out.push({ DepositoID: d.DepositoID, Nombre: d.Nombre, anyAvailable, details });
+    }
+    res.json(out);
+  } catch (err) {
+    console.error('Error GET /api/notas-pedido/:id/depositos-disponibles', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Crear remito desde una nota de pedido: genera movimiento de salida y marca nota como remitida
+app.post('/api/notas-pedido/:id/remito', async (req, res) => {
+  const notaId = req.params.id;
+  const { RemitoNumero, OrigenDepositoID, OrigenSectorID, Observaciones, Forzar } = req.body;
+  const forzar = !!Forzar;
+  try {
+    const nota = await db.get('SELECT * FROM notas_pedido WHERE NotaPedidoID = ?', notaId);
+    if (!nota) return res.status(404).json({ ok: false, error: 'Nota no encontrada' });
+
+    const detallesNota = await db.all('SELECT * FROM nota_detalle WHERE NotaPedidoID = ?', notaId);
+
+    await db.exec('BEGIN TRANSACTION');
+
+    const result = await db.run(`INSERT INTO movimientos (Tipo, Fecha, RemitoNumero, OrigenDepositoID, OrigenSectorID, DestinoDepositoID, DestinoSectorID, Observaciones)
+      VALUES (?, datetime('now'), ?, ?, ?, NULL, NULL, ?)`, 'Salida', RemitoNumero || null, OrigenDepositoID || null, OrigenSectorID || null, Observaciones || null);
+    const movimientoId = result.lastID;
+
+    const stmt = await db.prepare('INSERT INTO movimiento_detalle (MovimientoID, ProductoID, Unidad, Pack, Pallets) VALUES (?, ?, ?, ?, ?)');
+    try {
+  for (const d of detallesNota) {
+        const codigo = d.Codigo;
+        const cantidad = parseFloat(d.Cantidad || 0) || 0;
+
+        // mapear a variante o producto
+        let variante = await db.get('SELECT * FROM producto_variantes WHERE Codigo = ?', codigo);
+        let producto = null;
+        let medida = 'unidad';
+        if (variante) {
+          producto = await db.get('SELECT * FROM productos WHERE ProductoID = ?', variante.ProductoID);
+          medida = variante.Medida || producto?.DefaultMeasure || 'unidad';
+        } else {
+          producto = await db.get('SELECT * FROM productos WHERE Codigo = ?', codigo);
+          medida = producto ? (producto.DefaultMeasure || 'unidad') : 'unidad';
+        }
+
+        // Normalizar cantidad usando la misma lógica que /api/movimientos
+        let unidad = 0, pack = 0, pallets = 0;
+        const unitsPerPack = variante ? (Number(variante.UnitsPerPack) || 1) : (producto ? (Number(producto.UnitsPerPack) || 1) : 1);
+        const packsPerPallet = variante ? (Number(variante.PacksPerPallet) || 1) : (producto ? (Number(producto.PacksPerPallet) || 1) : 1);
+        const med = String(medida || 'unidad').toLowerCase();
+        if (med === 'unidad' || med === 'u') unidad = cantidad;
+        else if (med === 'pack') unidad = cantidad * unitsPerPack;
+        else if (med === 'pallet' || med === 'pallets') unidad = cantidad * packsPerPallet * unitsPerPack;
+        else { await db.exec('ROLLBACK'); return res.status(400).json({ ok: false, error: 'Medida desconocida en detalle' }); }
+
+  // Determinar ProductoID para stock
+  const stockProductoId = variante ? variante.ProductoID : (producto ? producto.ProductoID : null);
+        if (!stockProductoId) { await db.exec('ROLLBACK'); return res.status(400).json({ ok: false, error: 'Producto/Variante no encontrada para codigo ' + codigo }); }
+
+        // Validar stock en origen (convertimos todo a unidades normalizadas)
+        let shippedUnits = unidad; // por defecto intentamos enviar la cantidad solicitada
+        if (OrigenDepositoID) {
+          const origenRow = await db.get('SELECT * FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', stockProductoId, OrigenDepositoID, OrigenSectorID);
+          const origenUnidad = origenRow ? (parseFloat(origenRow.Unidad) || 0) : 0;
+          const origenPack = origenRow ? (parseInt(origenRow.Pack) || 0) : 0;
+          const origenPallets = origenRow ? (parseFloat(origenRow.Pallets) || 0) : 0;
+          const availableUnits = origenUnidad + (origenPack * unitsPerPack) + (origenPallets * unitsPerPack * packsPerPallet);
+          if (availableUnits < unidad) {
+            if (!forzar) {
+              await db.exec('ROLLBACK');
+              return res.status(400).json({ ok: false, error: 'Stock insuficiente en origen', detalle: { Codigo: codigo, ProductoID: stockProductoId, solicitado: { Unidad: unidad }, disponibleUnits: availableUnits } });
+            }
+            // Forzar: enviamos lo que haya disponible (puede ser 0)
+            shippedUnits = availableUnits;
+          }
+        }
+
+        // Insertar detalle del movimiento (almacenar unidades normalizadas)
+        // Usamos la columna Unidad para almacenar la cantidad normalizada enviada
+        await stmt.run(movimientoId, stockProductoId, shippedUnits, 0, 0);
+
+        // Descontar stock en origen (restamos en la columna Unidad la cantidad enviada)
+        if (OrigenDepositoID) {
+          await db.run(`UPDATE stock SET Unidad = Unidad - ? WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?`, shippedUnits, stockProductoId, OrigenDepositoID, OrigenSectorID);
+        }
+      }
+    } finally {
+      await stmt.finalize();
+    }
+
+    // Marcar la nota como remitida
+    await db.run("UPDATE notas_pedido SET EstadoRemito = ?, Estado = ? WHERE NotaPedidoID = ?", 'Remitido', 'Remitido', notaId);
+
+    await db.exec('COMMIT');
+    res.json({ ok: true, MovimientoID: movimientoId });
+  } catch (err) {
+    try { await db.exec('ROLLBACK'); } catch (e) { /* ignore */ }
+    console.error('Error POST /api/notas-pedido/:id/remito', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
 // Crear nota con detalles - espera { nota: {...}, detalles: [...] }
 app.post('/api/notas-pedido', async (req, res) => {
   const { nota, detalles } = req.body;

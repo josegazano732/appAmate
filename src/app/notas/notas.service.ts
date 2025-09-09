@@ -29,4 +29,7 @@ export class NotasService {
   delete(id: number) {
     return this.http.delete(`${this.api}/notas-pedido/${id}`);
   }
+  prepareRemito(id:number){ return this.http.get<any>(`${this.api}/notas-pedido/${id}/remito`); }
+  createRemito(id:number, body:any){ return this.http.post(`${this.api}/notas-pedido/${id}/remito`, body); }
+  depositosDisponibles(id:number){ return this.http.get<any[]>(`${this.api}/notas-pedido/${id}/depositos-disponibles`); }
 }

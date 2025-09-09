@@ -38,6 +38,7 @@ import { NotasService } from './notas.service';
               <td><span class="badge" [ngClass]="badgeClassRemito(n.EstadoRemito)">{{n.EstadoRemito}}</span></td>
               <td><span class="badge" [ngClass]="badgeClassFact(n.EstadoFacturacion)">{{n.EstadoFacturacion}}</span></td>
               <td>{{n.ImporteOperacion | arsCurrency}}</td>
+              <td><button class="btn btn-sm btn-outline-primary" (click)="openRemito(n)">Generar Remito</button></td>
             </tr>
           </tbody>
         </table>
@@ -134,4 +135,5 @@ export class NotasListComponent implements OnInit, OnDestroy {
   nextPage() {
     if (this.currentPage < this.totalPages) this.loadPage(this.currentPage + 1);
   }
+  openRemito(n:any){ window.location.href = '/notas/remito/' + n.NotaPedidoID; }
 }
