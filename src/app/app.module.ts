@@ -9,6 +9,7 @@ const routes: Routes = [
   { path: 'datos-clientes/new', component: DatosClienteFormComponent },
   { path: 'datos-clientes/edit/:id', component: DatosClienteFormComponent },
   { path: 'notas', loadChildren: () => import('./notas/notas.module').then(m => m.NotasModule) }
+  ,{ path: 'inventario', loadChildren: () => import('./inventario/inventario.module').then(m => m.InventarioModule) }
 ];
 
 import { AppComponent } from './app.component';

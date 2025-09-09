@@ -1,0 +1,24 @@
+import { NgModule } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { RouterModule, Routes } from '@angular/router';
+import { ProductoFormComponent } from './producto-form.component';
+import { DepositoSectorFormComponent } from './deposito-sector-form.component';
+import { StockListComponent } from './stock-list.component';
+import { MovimientoFormComponent } from './movimiento-form.component';
+import { ProductosListComponent } from './productos-list.component';
+
+const routes: Routes = [
+  { path: '', component: StockListComponent },
+  { path: 'productos', component: ProductosListComponent },
+  { path: 'productos/new', component: ProductoFormComponent },
+  { path: 'productos/edit/:id', component: ProductoFormComponent },
+  { path: 'depositos', component: DepositoSectorFormComponent },
+  { path: 'movimientos/new', component: MovimientoFormComponent }
+];
+
+@NgModule({
+  declarations: [ProductoFormComponent, DepositoSectorFormComponent, StockListComponent, MovimientoFormComponent, ProductosListComponent],
+  imports: [CommonModule, FormsModule, RouterModule.forChild(routes)]
+})
+export class InventarioModule {}
