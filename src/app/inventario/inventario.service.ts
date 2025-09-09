@@ -30,4 +30,9 @@ export class InventarioService {
   createMovimiento(m: any) { return this.http.post(`${this.api}/movimientos`, m); }
   listMovimientos() { return this.http.get<any[]>(`${this.api}/movimientos`); }
   getMovimiento(id:any) { return this.http.get<any>(`${this.api}/movimientos/${id}`); }
+  // Variantes
+  listVariantes(productoId:any){ return this.http.get<any[]>(`${this.api}/productos/${productoId}/variantes`); }
+  createVariante(productoId:any, v:any){ return this.http.post(`${this.api}/productos/${productoId}/variantes`, v); }
+  updateVariante(productoId:any, varianteId:any, v:any){ return this.http.put(`${this.api}/productos/${productoId}/variantes/${varianteId}`, v); }
+  deleteVariante(productoId:any, varianteId:any){ return this.http.delete(`${this.api}/productos/${productoId}/variantes/${varianteId}`); }
 }

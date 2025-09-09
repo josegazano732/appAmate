@@ -29,6 +29,7 @@ import { ToastService } from '../shared/toast.service';
               <td>{{p.DefaultMeasure || p.TipoUnidad || '-'}}</td>
               <td class="text-end">
                 <button class="btn btn-sm btn-outline-secondary me-1" (click)="edit(p)">Editar</button>
+                <button class="btn btn-sm btn-outline-secondary me-1" (click)="irAVariantes(p)">Variantes</button>
                 <button class="btn btn-sm btn-outline-danger" (click)="del(p)">Eliminar</button>
               </td>
             </tr>
@@ -48,4 +49,5 @@ export class ProductosListComponent implements OnInit {
   edit(p:any){ this.router.navigate(['/inventario/productos/edit', p.ProductoID]); }
   newProducto(){ this.router.navigate(['/inventario/productos/new']); }
   del(p:any){ if (!confirm('Confirma eliminar producto?')) return; this.inv.deleteProducto(p.ProductoID).subscribe(()=>{ this.toast.success('Producto eliminado'); this.load(); }, (err:any)=> this.toast.error(err?.error?.error || 'Error al eliminar') ); }
+  irAVariantes(p:any){ this.router.navigate(['/inventario/productos', p.ProductoID, 'variantes']); }
 }

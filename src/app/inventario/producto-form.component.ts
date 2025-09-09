@@ -26,6 +26,7 @@ import { debounceTime, Subject } from 'rxjs';
           <div class="row mt-2">
             <div class="col-md-12 text-end">
               <div *ngIf="codigoExiste" class="text-danger small">El código ya existe</div>
+              <button *ngIf="p && p.ProductoID" type="button" class="btn btn-secondary me-2" (click)="irAVariantes()" [disabled]="saving">Variantes</button>
               <button class="btn btn-primary" type="submit" [disabled]="codigoExiste || saving">Guardar</button>
             </div>
           </div>
@@ -76,10 +77,20 @@ export class ProductoFormComponent {
     this.inv.createProducto(payload).subscribe((res:any) => {
       this.saving = false;
       this.toast.success('Producto creado correctamente');
-      this.router.navigate(['/inventario/productos']);
+      const newId = res && res.ProductoID ? res.ProductoID : null;
+      if (newId) {
+        this.router.navigate(['/inventario/productos', newId, 'variantes']);
+      } else {
+        this.router.navigate(['/inventario/productos']);
+      }
     }, (err:any) => {
       this.saving = false;
       this.toast.error(err?.error?.error || 'Error al crear producto');
     });
+  }
+  irAVariantes() {
+    if (this.p && this.p.ProductoID) {
+      this.router.navigate(['/inventario/productos', this.p.ProductoID, 'variantes']);
+    }
   }
 }

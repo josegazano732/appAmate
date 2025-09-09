@@ -108,6 +108,40 @@ let db;
     console.warn('DB migration productos: error al verificar columnas', err.message || err);
   }
 
+  // Nuevo: tabla de variantes de producto (producto maestro + variantes)
+  await db.exec(`CREATE TABLE IF NOT EXISTS producto_variantes (
+    VarianteID INTEGER PRIMARY KEY AUTOINCREMENT,
+    ProductoID INTEGER,
+    Codigo TEXT,
+    Medida TEXT,
+    UnitsPerPack INTEGER DEFAULT 1,
+    PacksPerPallet INTEGER DEFAULT 1,
+    DefaultFlag INTEGER DEFAULT 0,
+    FOREIGN KEY (ProductoID) REFERENCES productos(ProductoID)
+  );`);
+  // Índice único por Codigo para identificar variantes por barcode
+  try { await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_variante_codigo ON producto_variantes(Codigo);'); } catch(e) { }
+
+  // Migrar datos existentes de productos a variantes si no existen variantes
+  try {
+    const countVar = await db.get('SELECT COUNT(*) as c FROM producto_variantes');
+    if (countVar.c === 0) {
+      const prods = await db.all('SELECT * FROM productos');
+      const insertStmt = await db.prepare('INSERT INTO producto_variantes (ProductoID, Codigo, Medida, UnitsPerPack, PacksPerPallet, DefaultFlag) VALUES (?, ?, ?, ?, ?, ?)');
+      try {
+        for (const p of prods) {
+          const medida = p.DefaultMeasure || 'unidad';
+          const units = (p.UnitsPerPack !== undefined && p.UnitsPerPack !== null) ? p.UnitsPerPack : 1;
+          const packs = (p.PacksPerPallet !== undefined && p.PacksPerPallet !== null) ? p.PacksPerPallet : 1;
+          await insertStmt.run(p.ProductoID, p.Codigo, medida, units, packs, 1);
+        }
+      } finally { await insertStmt.finalize(); }
+      console.log('DB migration: migradas filas de productos a producto_variantes');
+    }
+  } catch (err) {
+    console.warn('DB migration variantes: error', err.message || err);
+  }
+
   await db.exec(`CREATE TABLE IF NOT EXISTS depositos (
     DepositoID INTEGER PRIMARY KEY AUTOINCREMENT,
     Nombre TEXT
@@ -382,9 +416,65 @@ app.get('/api/productos', async (req, res) => {
 // Verificar existencia de producto por Codigo
 app.get('/api/productos/exists', async (req, res) => {
   const codigo = req.query.codigo;
+  const medida = req.query.medida || null;
   if (!codigo) return res.json({ exists: false });
+  // Buscar en variantes (barcode) si existe una variante con ese codigo
+  const v = await db.get('SELECT VarianteID FROM producto_variantes WHERE Codigo = ?', codigo);
+  if (v) return res.json({ exists: true });
+  // Fallback: buscar en productos (legacy)
   const p = await db.get('SELECT ProductoID FROM productos WHERE Codigo = ?', codigo);
   res.json({ exists: !!p });
+});
+
+// Variantes endpoints
+app.get('/api/productos/:id/variantes', async (req, res) => {
+  const pid = req.params.id;
+  const rows = await db.all('SELECT * FROM producto_variantes WHERE ProductoID = ? ORDER BY VarianteID ASC', pid);
+  res.json(rows);
+});
+
+app.post('/api/productos/:id/variantes', async (req, res) => {
+  try {
+    const pid = req.params.id;
+    const { Codigo, Medida, UnitsPerPack, PacksPerPallet, DefaultFlag } = req.body;
+    const r = await db.run('INSERT INTO producto_variantes (ProductoID, Codigo, Medida, UnitsPerPack, PacksPerPallet, DefaultFlag) VALUES (?, ?, ?, ?, ?, ?)', pid, Codigo, Medida || 'unidad', UnitsPerPack || 1, PacksPerPallet || 1, DefaultFlag ? 1 : 0);
+    res.json({ ok: true, VarianteID: r.lastID });
+  } catch (err) {
+    console.error('Error POST /api/productos/:id/variantes', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Actualizar variante
+app.put('/api/productos/:id/variantes/:varId', async (req, res) => {
+  try {
+    const pid = req.params.id;
+    const varId = req.params.varId;
+    const { Codigo, Medida, UnitsPerPack, PacksPerPallet, DefaultFlag } = req.body;
+    try {
+      await db.run('UPDATE producto_variantes SET Codigo = ?, Medida = ?, UnitsPerPack = ?, PacksPerPallet = ?, DefaultFlag = ? WHERE VarianteID = ? AND ProductoID = ?', Codigo, Medida || 'unidad', UnitsPerPack || 1, PacksPerPallet || 1, DefaultFlag ? 1 : 0, varId, pid);
+      res.json({ ok: true });
+    } catch (e) {
+      if ((e.message || '').toLowerCase().includes('unique')) return res.status(409).json({ ok: false, error: 'Codigo already exists' });
+      throw e;
+    }
+  } catch (err) {
+    console.error('Error PUT /api/productos/:id/variantes/:varId', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Borrar variante
+app.delete('/api/productos/:id/variantes/:varId', async (req, res) => {
+  try {
+    const pid = req.params.id;
+    const varId = req.params.varId;
+    await db.run('DELETE FROM producto_variantes WHERE VarianteID = ? AND ProductoID = ?', varId, pid);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error DELETE /api/productos/:id/variantes/:varId', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
 });
 
 app.post('/api/productos', async (req, res) => {
@@ -514,7 +604,7 @@ app.get('/api/stock', async (req, res) => {
 // Crear o actualizar stock (upsert)
 app.post('/api/stock', async (req, res) => {
   try {
-    const { ProductoID, DepositoID, SectorID } = req.body;
+    const { ProductoID, VarianteID, DepositoID, SectorID } = req.body;
     // Aceptar dos formas de entrada:
     // 1) { Unidad, Pack, Pallets } (comportamiento legacy)
     // 2) { Cantidad, Medida } donde Medida es 'unidad'|'pack'|'pallet' -> normalizamos a unidades base
@@ -523,14 +613,22 @@ app.post('/api/stock', async (req, res) => {
     let pallets = 0;
 
     // Priorizar formato nuevo si viene Cantidad + Medida
+
     if (req.body.Cantidad !== undefined && req.body.Medida) {
       const cantidad = parseFloat(req.body.Cantidad || 0) || 0;
       const medida = String(req.body.Medida || '').toLowerCase();
 
-      // Obtener equivalencias del producto (definir por producto, default 1)
-      const prod = await db.get('SELECT UnitsPerPack, PacksPerPallet FROM productos WHERE ProductoID = ?', ProductoID);
-      const unitsPerPack = prod ? (Number(prod.UnitsPerPack) || 1) : 1;
-      const packsPerPallet = prod ? (Number(prod.PacksPerPallet) || 1) : 1;
+      // Obtener equivalencias desde la variante (si se pasa VarianteID) o default variant para el ProductoID
+      let variant = null;
+      if (VarianteID) variant = await db.get('SELECT * FROM producto_variantes WHERE VarianteID = ?', VarianteID);
+      else if (ProductoID) variant = await db.get('SELECT * FROM producto_variantes WHERE ProductoID = ? AND DefaultFlag = 1 LIMIT 1', ProductoID);
+      // fallback: buscar en productos
+      if (!variant && ProductoID) {
+        const prod = await db.get('SELECT UnitsPerPack, PacksPerPallet FROM productos WHERE ProductoID = ?', ProductoID);
+        variant = { UnitsPerPack: prod ? (Number(prod.UnitsPerPack) || 1) : 1, PacksPerPallet: prod ? (Number(prod.PacksPerPallet) || 1) : 1 };
+      }
+      const unitsPerPack = variant ? (Number(variant.UnitsPerPack) || 1) : 1;
+      const packsPerPallet = variant ? (Number(variant.PacksPerPallet) || 1) : 1;
 
       if (medida === 'unidad' || medida === 'u') {
         unidad = cantidad;
@@ -550,7 +648,15 @@ app.post('/api/stock', async (req, res) => {
     }
 
     // Verificar existencia de fila de stock
-    const existing = await db.get('SELECT * FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', ProductoID, DepositoID, SectorID);
+    // Identificar fila de stock por VarianteID (si se usa) o ProductoID
+    let existing = null;
+    if (VarianteID) {
+      // buscar stock por ProductoID de la variante
+      const v = await db.get('SELECT ProductoID FROM producto_variantes WHERE VarianteID = ?', VarianteID);
+      existing = await db.get('SELECT * FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', v ? v.ProductoID : null, DepositoID, SectorID);
+    } else {
+      existing = await db.get('SELECT * FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', ProductoID, DepositoID, SectorID);
+    }
 
     // Si existe, validar que la operación no deje valores negativos
     if (existing) {
@@ -696,39 +802,70 @@ app.post('/api/movimientos', async (req, res) => {
       const stmt = await db.prepare('INSERT INTO movimiento_detalle (MovimientoID, ProductoID, Unidad, Pack, Pallets) VALUES (?, ?, ?, ?, ?)');
       try {
         for (const d of detalles) {
-          const unidad = parseFloat(d.Unidad || 0) || 0;
-          const pack = parseInt(d.Pack || 0) || 0;
-          const pallets = parseFloat(d.Pallets || 0) || 0;
+          // detalle puede venir con VarianteID o ProductoID
+          const varianteId = d.VarianteID || null;
+          const productoId = d.ProductoID || null;
+
+          // Normalizar cantidades a unidades base usando la variante si está disponible
+          let unidad = parseFloat(d.Unidad || 0) || 0;
+          let pack = parseInt(d.Pack || 0) || 0;
+          let pallets = parseFloat(d.Pallets || 0) || 0;
+
+          // Si el cliente envía Cantidad+Medida, normalizar aquí (mantener compat)
+          if (d.Cantidad !== undefined && d.Medida) {
+            const cantidad = parseFloat(d.Cantidad || 0) || 0;
+            const medida = String(d.Medida || '').toLowerCase();
+            let variant = null;
+            if (varianteId) variant = await db.get('SELECT * FROM producto_variantes WHERE VarianteID = ?', varianteId);
+            else if (productoId) variant = await db.get('SELECT * FROM producto_variantes WHERE ProductoID = ? AND DefaultFlag = 1 LIMIT 1', productoId);
+            if (!variant && productoId) {
+              const prod = await db.get('SELECT UnitsPerPack, PacksPerPallet FROM productos WHERE ProductoID = ?', productoId);
+              variant = { UnitsPerPack: prod ? (Number(prod.UnitsPerPack) || 1) : 1, PacksPerPallet: prod ? (Number(prod.PacksPerPallet) || 1) : 1 };
+            }
+            const unitsPerPack = variant ? (Number(variant.UnitsPerPack) || 1) : 1;
+            const packsPerPallet = variant ? (Number(variant.PacksPerPallet) || 1) : 1;
+            if (medida === 'unidad' || medida === 'u') unidad = cantidad;
+            else if (medida === 'pack') unidad = cantidad * unitsPerPack;
+            else if (medida === 'pallet' || medida === 'pallets') unidad = cantidad * packsPerPallet * unitsPerPack;
+            else { await db.exec('ROLLBACK'); return res.status(400).json({ ok: false, error: 'Medida desconocida en detalle' }); }
+            pack = 0; pallets = 0;
+          }
+
+          // Determinar ProductoID real para la fila de stock (desde variante si se pasó)
+          let stockProductoId = productoId;
+          if (varianteId && !stockProductoId) {
+            const v = await db.get('SELECT ProductoID FROM producto_variantes WHERE VarianteID = ?', varianteId);
+            stockProductoId = v ? v.ProductoID : null;
+          }
 
           // Si hay origen, validar existencia y cantidad suficiente
           if (OrigenDepositoID) {
-            const origenRow = await db.get('SELECT * FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', d.ProductoID, OrigenDepositoID, OrigenSectorID);
+            const origenRow = await db.get('SELECT * FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', stockProductoId, OrigenDepositoID, OrigenSectorID);
             const origenUnidad = origenRow ? (parseFloat(origenRow.Unidad) || 0) : 0;
             const origenPack = origenRow ? (parseInt(origenRow.Pack) || 0) : 0;
             const origenPallets = origenRow ? (parseFloat(origenRow.Pallets) || 0) : 0;
 
             if (origenUnidad < unidad || origenPack < pack || origenPallets < pallets) {
-              // cantidad insuficiente -> rollback y responder error
               await db.exec('ROLLBACK');
-              return res.status(400).json({ ok: false, error: 'Stock insuficiente en origen', detalle: { ProductoID: d.ProductoID, solicitado: { Unidad: unidad, Pack: pack, Pallets: pallets }, disponible: { Unidad: origenUnidad, Pack: origenPack, Pallets: origenPallets } } });
+              return res.status(400).json({ ok: false, error: 'Stock insuficiente en origen', detalle: { ProductoID: stockProductoId, solicitado: { Unidad: unidad, Pack: pack, Pallets: pallets }, disponible: { Unidad: origenUnidad, Pack: origenPack, Pallets: origenPallets } } });
             }
           }
 
-          // Insertar detalle
-          await stmt.run(movimientoId, d.ProductoID, unidad, pack, pallets);
+          // Insertar detalle (usar ProductoID para compatibilidad)
+          await stmt.run(movimientoId, stockProductoId, unidad, pack, pallets);
 
           // Actualizar stock origen
           if (OrigenDepositoID) {
-            await db.run(`UPDATE stock SET Unidad = Unidad - ?, Pack = Pack - ?, Pallets = Pallets - ? WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?`, unidad, pack, pallets, d.ProductoID, OrigenDepositoID, OrigenSectorID);
+            await db.run(`UPDATE stock SET Unidad = Unidad - ?, Pack = Pack - ?, Pallets = Pallets - ? WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?`, unidad, pack, pallets, stockProductoId, OrigenDepositoID, OrigenSectorID);
           }
 
           // Actualizar stock destino (sumar o insertar)
           if (DestinoDepositoID) {
-            const existing = await db.get('SELECT StockID FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', d.ProductoID, DestinoDepositoID, DestinoSectorID);
+            const existing = await db.get('SELECT StockID FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', stockProductoId, DestinoDepositoID, DestinoSectorID);
             if (existing) {
               await db.run(`UPDATE stock SET Unidad = Unidad + ?, Pack = Pack + ?, Pallets = Pallets + ? WHERE StockID = ?`, unidad, pack, pallets, existing.StockID);
             } else {
-              await db.run('INSERT INTO stock (ProductoID, DepositoID, SectorID, Unidad, Pack, Pallets) VALUES (?, ?, ?, ?, ?, ?)', d.ProductoID, DestinoDepositoID, DestinoSectorID, unidad, pack, pallets);
+              await db.run('INSERT INTO stock (ProductoID, DepositoID, SectorID, Unidad, Pack, Pallets) VALUES (?, ?, ?, ?, ?, ?)', stockProductoId, DestinoDepositoID, DestinoSectorID, unidad, pack, pallets);
             }
           }
         }
