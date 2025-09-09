@@ -73,8 +73,9 @@ let db;
     ProductoDescripcion TEXT,
     Familia TEXT,
     Precio REAL,
-    Cantidad REAL,
-    PrecioNeto REAL,
+  Cantidad REAL,
+  PrecioNeto REAL,
+  Medida TEXT,
     FOREIGN KEY (NotaPedidoID) REFERENCES notas_pedido(NotaPedidoID)
   );`);
 
@@ -224,6 +225,22 @@ let db;
     console.warn('DB migration: error al verificar columnas de notas_pedido', err.message || err);
   }
 
+  // Verificar columna Medida en nota_detalle
+  try {
+    const ndCols = await db.all("PRAGMA table_info('nota_detalle')");
+    const ndExisting = new Set(ndCols.map(c => c.name));
+    if (!ndExisting.has('Medida')) {
+      try {
+        await db.exec("ALTER TABLE nota_detalle ADD COLUMN Medida TEXT DEFAULT 'unidad';");
+        console.log('DB migration: ejecutado -> ALTER TABLE nota_detalle ADD COLUMN Medida TEXT DEFAULT \'unidad\';');
+      } catch (err) {
+        console.warn('DB migration nota_detalle: no se pudo ejecutar ALTER TABLE Medida', err.message || err);
+      }
+    }
+  } catch (err) {
+    console.warn('DB migration nota_detalle: error al verificar columnas', err.message || err);
+  }
+
   // Insertar datos de ejemplo si no existen notas
   const countNotas = await db.get('SELECT COUNT(*) as c FROM notas_pedido');
   if (countNotas.c === 0) {
@@ -237,12 +254,12 @@ let db;
     `);
 
     // Insertar algunos detalles
-    await db.run(`INSERT INTO nota_detalle (NotaPedidoID, Codigo, ProductoDescripcion, Familia, Precio, Cantidad, PrecioNeto) VALUES
-      (1,'3333333333333','YM Pallet 10x500 Don Julian TRADICIONAL','YM Elaborada',12056,25,301400),
-      (1,'3333333333333','YM Pallet 10x500 Don Julian TRADICIONAL','YM Elaborada',11010.22,1,11010.22),
-      (1,'1111111111111','YM 500 Gs Don Julian TRADICIONAL','YM Elaborada',12320,3,36960),
-      (1,'4444444444444','YM 500 Grs Caricias de Mate TRADICIONAL','YM Elaborada',9500,2,19000),
-      (6,'4444444444444','YM 500 Grs Caricias de Mate TRADICIONAL','YM Elaborada',2000,1,2000)
+    await db.run(`INSERT INTO nota_detalle (NotaPedidoID, Codigo, ProductoDescripcion, Familia, Precio, Cantidad, PrecioNeto, Medida) VALUES
+      (1,'3333333333333','YM Pallet 10x500 Don Julian TRADICIONAL','YM Elaborada',12056,25,301400,'unidad'),
+      (1,'3333333333333','YM Pallet 10x500 Don Julian TRADICIONAL','YM Elaborada',11010.22,1,11010.22,'unidad'),
+      (1,'1111111111111','YM 500 Gs Don Julian TRADICIONAL','YM Elaborada',12320,3,36960,'unidad'),
+      (1,'4444444444444','YM 500 Grs Caricias de Mate TRADICIONAL','YM Elaborada',9500,2,19000,'unidad'),
+      (6,'4444444444444','YM 500 Grs Caricias de Mate TRADICIONAL','YM Elaborada',2000,1,2000,'unidad')
     `);
   }
 })();
@@ -380,20 +397,22 @@ app.get('/api/notas-pedido/:id/remito', async (req, res) => {
     const mapped = [];
     for (const d of detalles) {
       const codigo = d.Codigo;
+      // if detalle stores Medida, prefer it
+      const detalleMedida = d.Medida || null;
       // buscar variante por codigo
       const variante = await db.get('SELECT * FROM producto_variantes WHERE Codigo = ?', codigo);
       if (variante) {
-        mapped.push({ Codigo: codigo, VarianteID: variante.VarianteID, ProductoID: variante.ProductoID, Cantidad: d.Cantidad || 0, Medida: variante.Medida || 'unidad' });
+        mapped.push({ Codigo: codigo, VarianteID: variante.VarianteID, ProductoID: variante.ProductoID, Cantidad: d.Cantidad || 0, Medida: detalleMedida || variante.Medida || 'unidad' });
         continue;
       }
       // fallback: buscar producto por codigo
       const producto = await db.get('SELECT * FROM productos WHERE Codigo = ?', codigo);
       if (producto) {
-        mapped.push({ Codigo: codigo, ProductoID: producto.ProductoID, Cantidad: d.Cantidad || 0, Medida: producto.DefaultMeasure || 'unidad' });
+        mapped.push({ Codigo: codigo, ProductoID: producto.ProductoID, Cantidad: d.Cantidad || 0, Medida: detalleMedida || producto.DefaultMeasure || 'unidad' });
         continue;
       }
       // sin mapping
-      mapped.push({ Codigo: codigo, Cantidad: d.Cantidad || 0, Medida: 'unidad' });
+      mapped.push({ Codigo: codigo, Cantidad: d.Cantidad || 0, Medida: detalleMedida || 'unidad' });
     }
     // If caller requested availability for a specific deposito, compute available per line
     if (depositoId) {
@@ -492,17 +511,18 @@ app.post('/api/notas-pedido/:id/remito', async (req, res) => {
         const codigo = d.Codigo;
         const cantidad = parseFloat(d.Cantidad || 0) || 0;
 
-        // mapear a variante o producto
-        let variante = await db.get('SELECT * FROM producto_variantes WHERE Codigo = ?', codigo);
-        let producto = null;
-        let medida = 'unidad';
-        if (variante) {
-          producto = await db.get('SELECT * FROM productos WHERE ProductoID = ?', variante.ProductoID);
-          medida = variante.Medida || producto?.DefaultMeasure || 'unidad';
-        } else {
-          producto = await db.get('SELECT * FROM productos WHERE Codigo = ?', codigo);
-          medida = producto ? (producto.DefaultMeasure || 'unidad') : 'unidad';
-        }
+          // mapear a variante o producto
+          let variante = await db.get('SELECT * FROM producto_variantes WHERE Codigo = ?', codigo);
+          let producto = null;
+          // preferir la medida guardada en el detalle si existe
+          let medida = (d.Medida || '').toString() || null;
+          if (variante) {
+            producto = await db.get('SELECT * FROM productos WHERE ProductoID = ?', variante.ProductoID);
+            medida = medida || variante.Medida || producto?.DefaultMeasure || 'unidad';
+          } else {
+            producto = await db.get('SELECT * FROM productos WHERE Codigo = ?', codigo);
+            medida = medida || (producto ? (producto.DefaultMeasure || 'unidad') : 'unidad');
+          }
 
         // Normalizar cantidad usando la misma lógica que /api/movimientos
         let unidad = 0, pack = 0, pallets = 0;
@@ -580,10 +600,10 @@ app.post('/api/notas-pedido', async (req, res) => {
   );
   const notaId = result.lastID;
   if (Array.isArray(detalles)) {
-    const insertStmt = await db.prepare(`INSERT INTO nota_detalle (NotaPedidoID, Codigo, ProductoDescripcion, Familia, Precio, Cantidad, PrecioNeto) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+  const insertStmt = await db.prepare(`INSERT INTO nota_detalle (NotaPedidoID, Codigo, ProductoDescripcion, Familia, Precio, Cantidad, PrecioNeto, Medida) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
     try {
       for (const d of detalles) {
-        await insertStmt.run(notaId, d.Codigo, d.ProductoDescripcion, d.Familia, d.Precio, d.Cantidad, d.PrecioNeto);
+    await insertStmt.run(notaId, d.Codigo, d.ProductoDescripcion, d.Familia, d.Precio, d.Cantidad, d.PrecioNeto, d.Medida || 'unidad');
       }
     } finally {
       await insertStmt.finalize();
@@ -601,8 +621,21 @@ app.delete('/api/notas-pedido/:id', async (req, res) => {
 // Inventario endpoints
 // Productos
 app.get('/api/productos', async (req, res) => {
-  const prods = await db.all('SELECT * FROM productos ORDER BY ProductoID ASC');
-  res.json(prods);
+  try {
+    const q = req.query.q ? `%${req.query.q}%` : null;
+    let sql = 'SELECT * FROM productos';
+    const params = [];
+    if (q) {
+      sql += ' WHERE Codigo LIKE ? OR ProductoDescripcion LIKE ?';
+      params.push(q, q);
+    }
+    sql += ' ORDER BY ProductoID ASC';
+    const prods = await db.all(sql, params);
+    res.json(prods);
+  } catch (err) {
+    console.error('Error GET /api/productos', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
 });
 
 // Verificar existencia de producto por Codigo

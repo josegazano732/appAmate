@@ -1,6 +1,9 @@
-import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy } from '@angular/core';
 import { NotaPedido, NotaDetalle } from './nota.model';
 import { NotasService } from './notas.service';
+import { InventarioService } from '../inventario/inventario.service';
+import { Subject, Subscription } from 'rxjs';
+import { debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
 
 @Component({
   selector: 'app-nota-form',
@@ -81,7 +84,14 @@ import { NotasService } from './notas.service';
             <tbody>
               <tr *ngFor="let d of detalles; let i = index">
                 <td><input class="form-control form-control-sm" [(ngModel)]="d.Codigo" name="codigo{{i}}" /></td>
-                <td><input class="form-control form-control-sm" [(ngModel)]="d.ProductoDescripcion" name="prod{{i}}" /></td>
+                <td style="position:relative">
+                  <input class="form-control form-control-sm" [(ngModel)]="d.ProductoDescripcion" name="prod{{i}}" (ngModelChange)="filterProductos($event, i)" autocomplete="off" />
+                  <div *ngIf="suggestions[i] && suggestions[i].length" class="list-group position-absolute" style="z-index:50; max-height:200px; overflow:auto; width:100%">
+                    <button type="button" class="list-group-item list-group-item-action" *ngFor="let s of suggestions[i]" (click)="selectProducto(s,i)">
+                      <div><strong>{{s.Codigo}}</strong> — {{s.ProductoDescripcion}}</div>
+                    </button>
+                  </div>
+                </td>
                 <td><input class="form-control form-control-sm" [(ngModel)]="d.Familia" name="fam{{i}}" /></td>
                 <td>
                   <div class="input-group input-group-sm">
@@ -89,7 +99,16 @@ import { NotasService } from './notas.service';
                     <span class="input-group-text">{{ d.Precio | arsCurrency }}</span>
                   </div>
                 </td>
-                <td><input type="number" class="form-control form-control-sm" [(ngModel)]="d.Cantidad" name="cant{{i}}" (ngModelChange)="updateDetalle(i)" /></td>
+                <td>
+                  <div class="d-flex gap-2">
+                    <input type="number" class="form-control form-control-sm" [(ngModel)]="d.Cantidad" name="cant{{i}}" (ngModelChange)="updateDetalle(i)" />
+                    <select class="form-select form-select-sm w-auto" [(ngModel)]="d.Medida" name="medida{{i}}" (ngModelChange)="updateDetalle(i)">
+                      <option value="unidad">U</option>
+                      <option value="pack">Pack</option>
+                      <option value="pallet">Pallet</option>
+                    </select>
+                  </div>
+                </td>
                 <td>
                   <input type="text" class="form-control form-control-sm" [value]="d.PrecioNeto | arsCurrency" name="pn{{i}}" readonly />
                 </td>
@@ -116,7 +135,14 @@ export class NotaFormComponent {
 
   detalles: NotaDetalle[] = [];
 
-  constructor(private notasService: NotasService) {}
+  productos: any[] = [];
+  suggestions: any[][] = []; // suggestions por fila
+  // Subjects para búsqueda por fila
+  searchSubjects: Subject<string>[] = [];
+  searchSubs: Subscription[] = [];
+  conversionText: string[] = []; // texto de conversión por fila
+
+  constructor(private notasService: NotasService, private inv: InventarioService) {}
 
   ngOnInit() {
     // si es nota nueva, asegurar valores por defecto
@@ -125,14 +151,84 @@ export class NotaFormComponent {
     if (!this.nota.EstadoFacturacion) this.nota.EstadoFacturacion = 'Sin Facturar';
   }
 
+  ngAfterViewInit() {
+    // inicialmente no cargamos todo el catálogo; usamos búsqueda por servidor
+  }
+
   addDetalle() {
-    this.detalles.push({ Codigo: '', ProductoDescripcion: '', Familia: '', Precio: 0, Cantidad: 1, PrecioNeto: 0 });
+  this.detalles.push({ Codigo: '', ProductoDescripcion: '', Familia: '', Precio: 0, Cantidad: 1, PrecioNeto: 0, Medida: 'unidad' });
+  this.suggestions.push([]);
+    this.conversionText.push('');
+    const subj = new Subject<string>();
+    this.searchSubjects.push(subj);
+    const sub = subj.pipe(debounceTime(300), distinctUntilChanged(), switchMap(q => this.inv.listProductos(q || ''))).subscribe((res:any[]) => {
+      const idx = this.searchSubjects.indexOf(subj);
+      if (idx >= 0) this.suggestions[idx] = res || [];
+    });
+    this.searchSubs.push(sub);
     this.updateImporte();
   }
 
   removeDetalle(i: number) {
     this.detalles.splice(i, 1);
+    this.suggestions.splice(i, 1);
+    const s = this.searchSubjects.splice(i,1)[0];
+    if (s) {
+      const sub = this.searchSubs.splice(i,1)[0];
+      sub?.unsubscribe();
+    }
+    this.conversionText.splice(i,1);
     this.updateImporte();
+  }
+
+  // Autocomplete: filtrar productos por texto y mostrar sugerencias
+  filterProductos(text: string, row: number) {
+    // usar búsqueda server-side via el subject correspondiente
+    const subj = this.searchSubjects[row];
+    if (subj) subj.next(text || '');
+  }
+
+  selectProducto(p: any, row: number) {
+    const d = this.detalles[row];
+    if (!d) return;
+    d.Codigo = p.Codigo;
+    d.ProductoDescripcion = p.ProductoDescripcion;
+    // usar medida por defecto si existe
+    d.Medida = p.DefaultMeasure || 'unidad';
+    // actualizar importe
+    this.updateDetalle(row);
+    // limpiar sugerencias
+    this.suggestions[row] = [];
+    // calcular conversión para mostrar (ej. "3 packs = 18 unidades")
+    this.calcConversionForRow(row);
+  }
+
+  // calcula texto de conversión basado en la medida seleccionada y la cantidad de la fila
+  async calcConversionForRow(row: number) {
+    const d = this.detalles[row];
+    if (!d) return;
+    const codigo = d.Codigo;
+    if (!codigo) { this.conversionText[row] = ''; return; }
+    // Usar endpoint de productos para obtener UnitsPerPack/PacksPerPallet
+    this.inv.listProductos(d.Codigo || '').subscribe((prods:any[]) => {
+      const prod = (prods && prods.length) ? prods.find((x:any)=>x.Codigo === d.Codigo) : null;
+      let unitsPerPack = 1, packsPerPallet = 1;
+      if (prod) {
+        unitsPerPack = Number(prod.UnitsPerPack) || 1;
+        packsPerPallet = Number(prod.PacksPerPallet) || 1;
+      }
+      const med = String(d.Medida || 'unidad').toLowerCase();
+      const qty = Number(d.Cantidad || 0) || 0;
+      let units = 0;
+      if (med === 'unidad' || med === 'u') units = qty;
+      else if (med === 'pack') units = qty * unitsPerPack;
+      else if (med === 'pallet' || med === 'pallets') units = qty * packsPerPallet * unitsPerPack;
+      this.conversionText[row] = `${qty} ${med}${qty!==1?'s':''} = ${units} unidades`;
+    });
+  }
+
+  ngOnDestroy() {
+    this.searchSubs.forEach(s => s.unsubscribe());
   }
 
   // Actualiza el PrecioNeto de una línea y recalcula el importe total

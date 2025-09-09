@@ -22,4 +22,6 @@ export interface NotaDetalle {
   Precio?: number;
   Cantidad?: number;
   PrecioNeto?: number;
+  // Medida indica si la cantidad está expresada en 'unidad'|'pack'|'pallet'
+  Medida?: 'unidad' | 'pack' | 'pallet';
 }

@@ -7,7 +7,7 @@ export class InventarioService {
   constructor(private http: HttpClient) {}
 
   // Productos
-  listProductos() { return this.http.get<any[]>(`${this.api}/productos`); }
+  listProductos(q?: string) { return this.http.get<any[]>(`${this.api}/productos`, { params: q ? { q } : {} as any }); }
   createProducto(p: any) { return this.http.post(`${this.api}/productos`, p); }
   getProducto(id: any) { return this.http.get<any>(`${this.api}/productos/${id}`); }
   updateProducto(id: any, p: any) { return this.http.put(`${this.api}/productos/${id}`, p); }
