@@ -2,6 +2,7 @@ import { Component, Input, Output, EventEmitter, OnInit, OnDestroy } from '@angu
 import { NotaPedido, NotaDetalle } from './nota.model';
 import { NotasService } from './notas.service';
 import { InventarioService } from '../inventario/inventario.service';
+import { ToastService } from '../shared/toast.service';
 import { Subject, Subscription } from 'rxjs';
 import { debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
 
@@ -123,6 +124,41 @@ import { debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
             <button class="btn btn-primary" type="submit">Guardar Nota</button>
             <button class="btn btn-secondary ms-2" type="button" (click)="cancelar()">Cancelar</button>
           </div>
+          <hr />
+          <div class="mt-2">
+            <button class="btn btn-sm btn-outline-secondary" type="button" (click)="loadMovimientos()">Ver movimientos relacionados</button>
+          </div>
+          <div *ngIf="movimientos && movimientos.length" class="mt-2">
+            <h6>Movimientos relacionados</h6>
+            <table class="table table-sm">
+              <thead><tr><th>ID</th><th>Tipo</th><th>Fecha</th><th>Remito</th><th></th></tr></thead>
+              <tbody>
+                <tr *ngFor="let m of movimientos">
+                  <td>{{m.MovimientoID}}</td>
+                  <td>{{m.Tipo}}</td>
+                  <td>{{m.Fecha}}</td>
+                  <td>{{m.RemitoNumero || '-'}}</td>
+                  <td><button class="btn btn-sm btn-danger" (click)="showRevertForNota(m)">Revertir</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <!-- Modal revert for nota -->
+          <div class="modal" tabindex="-1" [ngClass]="{'show d-block': revertTargetNota}" *ngIf="revertTargetNota">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Confirmar reversión</h5></div>
+                <div class="modal-body">
+                  <div>¿Confirma revertir el movimiento {{revertTargetNota?.MovimientoID}}?</div>
+                  <div class="mt-2"><label>Motivo (opcional)</label><textarea class="form-control" [(ngModel)]="revertMotivoNota"></textarea></div>
+                </div>
+                <div class="modal-footer">
+                  <button class="btn btn-secondary" (click)="hideRevertForNota()">Cancelar</button>
+                  <button class="btn btn-danger" (click)="confirmRevertForNota()">Revertir</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </form>
       </div>
     </div>
@@ -142,7 +178,7 @@ export class NotaFormComponent {
   searchSubs: Subscription[] = [];
   conversionText: string[] = []; // texto de conversión por fila
 
-  constructor(private notasService: NotasService, private inv: InventarioService) {}
+  constructor(private notasService: NotasService, private inv: InventarioService, private toast: ToastService) {}
 
   ngOnInit() {
     // si es nota nueva, asegurar valores por defecto
@@ -229,6 +265,25 @@ export class NotaFormComponent {
 
   ngOnDestroy() {
     this.searchSubs.forEach(s => s.unsubscribe());
+  }
+
+  movimientos: any[] = [];
+  loadingMovements = false;
+
+  loadMovimientos(){
+    if (!this.nota || !this.nota.NotaPedidoID) return;
+    this.loadingMovements = true;
+    this.notasService.getMovimientosForNota(this.nota.NotaPedidoID).subscribe((r:any[])=>{ this.movimientos = r || []; this.loadingMovements=false; }, ()=>{ this.loadingMovements=false; });
+  }
+
+  // Modal-driven revert for nota
+  revertTargetNota: any = null;
+  revertMotivoNota: string = '';
+  showRevertForNota(m:any){ this.revertTargetNota = m; this.revertMotivoNota = ''; }
+  hideRevertForNota(){ this.revertTargetNota = null; this.revertMotivoNota = ''; }
+  confirmRevertForNota(){
+    const m = this.revertTargetNota; if (!m) return; const motivo = this.revertMotivoNota || 'Reversión automática'; this.hideRevertForNota();
+    this.inv.revertMovimiento(m.MovimientoID, motivo).subscribe((res:any)=>{ this.toast.success('Reversión creada: ' + res.MovimientoID); this.loadMovimientos(); }, ()=> this.toast.error('Error al revertir'));
   }
 
   // Actualiza el PrecioNeto de una línea y recalcula el importe total

@@ -31,6 +31,7 @@ export class InventarioService {
   createMovimiento(m: any) { return this.http.post(`${this.api}/movimientos`, m); }
   listMovimientos() { return this.http.get<any[]>(`${this.api}/movimientos`); }
   getMovimiento(id:any) { return this.http.get<any>(`${this.api}/movimientos/${id}`); }
+  revertMovimiento(id:any, motivo?:string){ return this.http.post<any>(`${this.api}/movimientos/${id}/revert`, { motivo: motivo || '' }); }
   // Variantes
   listVariantes(productoId:any){ return this.http.get<any[]>(`${this.api}/productos/${productoId}/variantes`); }
   createVariante(productoId:any, v:any){ return this.http.post(`${this.api}/productos/${productoId}/variantes`, v); }

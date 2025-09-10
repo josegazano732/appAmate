@@ -11,6 +11,7 @@ import { InventarioService } from '../inventario/inventario.service';
       <div class="card-body">
         <h5>Generar Remito para Nota {{nota?.NotaPedidoID}}</h5>
         <div *ngIf="nota">
+          <div class="mb-2">Estado remito: <span class="badge bg-info text-dark">{{nota.EstadoRemito || 'Sin Remito'}}</span></div>
           <div class="mb-2">Cliente: {{nota.NombreFiscal}}</div>
           <div class="mb-2">Fecha: {{nota.Fecha}}</div>
           <label>Remito Numero</label>
@@ -63,7 +64,7 @@ import { InventarioService } from '../inventario/inventario.service';
           </div>
 
           <div class="mt-2 text-end">
-            <button class="btn btn-primary" (click)="generar()">Generar Remito</button>
+            <button class="btn btn-primary" (click)="generar()" [disabled]="(nota.EstadoRemito||'').toString().toLowerCase() === 'remitido'">Generar Remito</button>
             <button class="btn btn-secondary ms-2" (click)="cancel()">Cancelar</button>
           </div>
         </div>

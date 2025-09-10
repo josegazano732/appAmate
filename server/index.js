@@ -142,6 +142,24 @@ let db;
   } catch (err) {
     console.warn('DB migration variantes: error', err.message || err);
   }
+  // Sincronizar variantes existentes con la tabla productos: si existe un producto con el mismo Codigo,
+  // asegurar que la variante apunte al ProductoID correcto para evitar inconsistencias al agregar disponibilidad
+  try {
+    const prods = await db.all('SELECT ProductoID, Codigo FROM productos WHERE Codigo IS NOT NULL');
+    for (const p of prods) {
+      if (!p.Codigo) continue;
+      try {
+        const res = await db.run('UPDATE producto_variantes SET ProductoID = ? WHERE Codigo = ?', p.ProductoID, p.Codigo);
+        if (res && res.changes && res.changes > 0) {
+          console.log(`DB sync: actualizadas ${res.changes} variante(s) para Codigo ${p.Codigo} -> ProductoID ${p.ProductoID}`);
+        }
+      } catch (e) {
+        console.warn('DB sync variantes error for codigo', p.Codigo, e.message || e);
+      }
+    }
+  } catch (e) {
+    console.warn('DB sync variantes failed', e.message || e);
+  }
 
   await db.exec(`CREATE TABLE IF NOT EXISTS depositos (
     DepositoID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -522,8 +540,12 @@ app.post('/api/notas-pedido/:id/remito', async (req, res) => {
   try {
     const nota = await db.get('SELECT * FROM notas_pedido WHERE NotaPedidoID = ?', notaId);
     if (!nota) return res.status(404).json({ ok: false, error: 'Nota no encontrada' });
+    // No permitir generar remito si la nota ya fue remitida completamente
+    if (String(nota.EstadoRemito || '').toLowerCase() === 'remitido') {
+      return res.status(400).json({ ok: false, error: 'La nota ya fue remitida completamente' });
+    }
 
-    const detallesNota = await db.all('SELECT * FROM nota_detalle WHERE NotaPedidoID = ?', notaId);
+  const detallesNota = await db.all('SELECT * FROM nota_detalle WHERE NotaPedidoID = ?', notaId);
 
     await db.exec('BEGIN TRANSACTION');
 
@@ -532,6 +554,8 @@ app.post('/api/notas-pedido/:id/remito', async (req, res) => {
     const movimientoId = result.lastID;
 
     const stmt = await db.prepare('INSERT INTO movimiento_detalle (MovimientoID, ProductoID, Unidad, Pack, Pallets) VALUES (?, ?, ?, ?, ?)');
+    // Guardaremos cuánto se envió por cada detalle para actualizar la nota_detalle después
+    const shippedPerDetalle = [];
     try {
       for (const d of detallesNota) {
         const codigo = d.Codigo;
@@ -571,10 +595,19 @@ app.post('/api/notas-pedido/:id/remito', async (req, res) => {
         // Validar stock en origen por columna (Unidad/Pack/Pallets)
         let shippedUnidad = unidad, shippedPack = pack, shippedPallets = pallets;
         if (OrigenDepositoID) {
-          const origenRow = await db.get('SELECT * FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', stockProductoId, OrigenDepositoID, OrigenSectorID);
-          const origenUnidad = origenRow ? (parseFloat(origenRow.Unidad) || 0) : 0;
-          const origenPack = origenRow ? (parseInt(origenRow.Pack) || 0) : 0;
-          const origenPallets = origenRow ? (parseFloat(origenRow.Pallets) || 0) : 0;
+          // Si se especificó sector, usamos esa fila; si no, sumamos todas las filas del depósito
+          let origenUnidad = 0, origenPack = 0, origenPallets = 0;
+          if (OrigenSectorID !== undefined && OrigenSectorID !== null) {
+            const origenRow = await db.get('SELECT * FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', stockProductoId, OrigenDepositoID, OrigenSectorID);
+            origenUnidad = origenRow ? (parseFloat(origenRow.Unidad) || 0) : 0;
+            origenPack = origenRow ? (parseInt(origenRow.Pack) || 0) : 0;
+            origenPallets = origenRow ? (parseFloat(origenRow.Pallets) || 0) : 0;
+          } else {
+            const sumRow = await db.get('SELECT SUM(Unidad) as Unidad, SUM(Pack) as Pack, SUM(Pallets) as Pallets FROM stock WHERE ProductoID = ? AND DepositoID = ?', stockProductoId, OrigenDepositoID);
+            origenUnidad = sumRow ? (parseFloat(sumRow.Unidad) || 0) : 0;
+            origenPack = sumRow ? (parseInt(sumRow.Pack) || 0) : 0;
+            origenPallets = sumRow ? (parseFloat(sumRow.Pallets) || 0) : 0;
+          }
 
           // Si no hay suficiente en la columna correspondiente
           if (origenUnidad < unidad || origenPack < pack || origenPallets < pallets) {
@@ -598,13 +631,40 @@ app.post('/api/notas-pedido/:id/remito', async (req, res) => {
           if (shippedPack) await db.run(`UPDATE stock SET Pack = Pack - ? WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?`, shippedPack, stockProductoId, OrigenDepositoID, OrigenSectorID);
           if (shippedPallets) await db.run(`UPDATE stock SET Pallets = Pallets - ? WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?`, shippedPallets, stockProductoId, OrigenDepositoID, OrigenSectorID);
         }
+
+        // Registrar lo enviado para ajustar la nota_detalle en la misma medida
+        let shippedInMedida = 0;
+        if (med === 'unidad' || med === 'u') shippedInMedida = shippedUnidad;
+        else if (med === 'pack') shippedInMedida = shippedPack;
+        else if (med === 'pallet' || med === 'pallets') shippedInMedida = shippedPallets;
+        shippedPerDetalle.push({ NotaDetalleID: d.NotaDetalleID, Codigo: codigo, Medida: med, Requested: cantidad, ShippedInMedida: shippedInMedida });
       }
     } finally {
       await stmt.finalize();
     }
 
-    // Marcar la nota como remitida
-    await db.run("UPDATE notas_pedido SET EstadoRemito = ?, Estado = ? WHERE NotaPedidoID = ?", 'Remitido', 'Remitido', notaId);
+    // Actualizar las cantidades pendientes en nota_detalle restando lo remitido (en la misma medida)
+    for (const s of shippedPerDetalle) {
+      if (!s.NotaDetalleID) continue;
+      // Obtener cantidad actual (por si cambió)
+      const current = await db.get('SELECT Cantidad FROM nota_detalle WHERE NotaDetalleID = ?', s.NotaDetalleID);
+      if (!current) continue;
+      const curCant = parseFloat(current.Cantidad || 0) || 0;
+      const newCant = Math.max(0, curCant - (Number(s.ShippedInMedida) || 0));
+      await db.run('UPDATE nota_detalle SET Cantidad = ? WHERE NotaDetalleID = ?', newCant, s.NotaDetalleID);
+    }
+
+    // Verificar si quedan cantidades pendientes en la nota
+    const remainingRow = await db.get('SELECT SUM(Cantidad) as totalPending FROM nota_detalle WHERE NotaPedidoID = ?', notaId);
+    const totalPending = remainingRow ? (parseFloat(remainingRow.totalPending) || 0) : 0;
+
+    if (totalPending <= 0) {
+      // Marcamos como remitido completo y no se podrá volver a generar remito
+      await db.run("UPDATE notas_pedido SET EstadoRemito = ?, Estado = ? WHERE NotaPedidoID = ?", 'Remitido', 'Remitido', notaId);
+    } else {
+      // Parcial
+      await db.run("UPDATE notas_pedido SET EstadoRemito = ?, Estado = ? WHERE NotaPedidoID = ?", 'Remitido Parcial', 'Remitido Parcial', notaId);
+    }
 
     await db.exec('COMMIT');
     res.json({ ok: true, MovimientoID: movimientoId });
@@ -652,6 +712,104 @@ app.delete('/api/notas-pedido/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Listar movimientos relacionados con una nota: por RemitoNumero en movimientos o por coincidencia de productos en movimiento_detalle
+app.get('/api/notas-pedido/:id/movimientos', async (req, res) => {
+  try {
+    const notaId = req.params.id;
+    const nota = await db.get('SELECT * FROM notas_pedido WHERE NotaPedidoID = ?', notaId);
+    if (!nota) return res.status(404).json({ ok: false, error: 'Nota no encontrada' });
+    // Buscar movimientos por RemitoNumero igual a OrdenCompra o buscando movimiento_detalle con productos de la nota
+    const detalles = await db.all('SELECT Codigo FROM nota_detalle WHERE NotaPedidoID = ?', notaId);
+    const codigos = detalles.map(d => d.Codigo).filter(Boolean);
+
+    // Movimientos con RemitoNumero igual a OrdenCompra o que contengan productos de la nota
+    const movimientosByRemito = await db.all('SELECT * FROM movimientos WHERE RemitoNumero = ? ORDER BY MovimientoID DESC', nota.OrdenCompra || '');
+    // Buscar movimientos que tengan alguno de los productos de la nota
+    let movimientosByDetalle = [];
+    if (codigos.length) {
+      // map codigos -> producto ids
+      const prodIds = [];
+      for (const c of codigos) {
+        const v = await db.get('SELECT ProductoID FROM producto_variantes WHERE Codigo = ?', c);
+        if (v && v.ProductoID) prodIds.push(v.ProductoID);
+        else {
+          const p = await db.get('SELECT ProductoID FROM productos WHERE Codigo = ?', c);
+          if (p && p.ProductoID) prodIds.push(p.ProductoID);
+        }
+      }
+      if (prodIds.length) {
+        const placeholders = prodIds.map(()=>'?').join(',');
+        movimientosByDetalle = await db.all(`SELECT m.* FROM movimientos m JOIN movimiento_detalle md ON md.MovimientoID = m.MovimientoID WHERE md.ProductoID IN (${placeholders}) ORDER BY m.MovimientoID DESC`, ...prodIds);
+      }
+    }
+
+    // Unir y deduplicar movimientos
+    const all = [...movimientosByRemito, ...movimientosByDetalle];
+    const seen = new Set();
+    const out = [];
+    for (const m of all) {
+      if (seen.has(m.MovimientoID)) continue; seen.add(m.MovimientoID); out.push(m);
+    }
+    res.json(out);
+  } catch (err) {
+    console.error('Error GET /api/notas-pedido/:id/movimientos', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Revertir un movimiento: crea un movimiento de tipo 'Entrada' con los mismos productos/columnas para devolver stock
+app.post('/api/movimientos/:id/revert', async (req, res) => {
+  const movimientoId = req.params.id;
+  try {
+    const mov = await db.get('SELECT * FROM movimientos WHERE MovimientoID = ?', movimientoId);
+    if (!mov) return res.status(404).json({ ok: false, error: 'Movimiento no encontrado' });
+    const detalles = await db.all('SELECT * FROM movimiento_detalle WHERE MovimientoID = ?', movimientoId);
+
+    await db.exec('BEGIN TRANSACTION');
+    const motivo = (req.body && req.body.motivo) ? String(req.body.motivo).slice(0,1000) : 'Reversión automática';
+    const result = await db.run(`INSERT INTO movimientos (Tipo, Fecha, RemitoNumero, OrigenDepositoID, OrigenSectorID, DestinoDepositoID, DestinoSectorID, Observaciones)
+      VALUES (?, datetime('now'), ?, NULL, NULL, ?, ?, ?)
+    `, 'Entrada Reversion', mov.RemitoNumero || null, mov.OrigenDepositoID || null, mov.OrigenSectorID || null, motivo);
+    const newMovId = result.lastID;
+
+    const stmt = await db.prepare('INSERT INTO movimiento_detalle (MovimientoID, ProductoID, Unidad, Pack, Pallets) VALUES (?, ?, ?, ?, ?)');
+    try {
+      for (const d of detalles) {
+        await stmt.run(newMovId, d.ProductoID, d.Unidad || 0, d.Pack || 0, d.Pallets || 0);
+        // Sumar stock en la(s) ubicación(es) originales: si movimiento original tenía OrigenSectorID, sumar en esa fila; si no, sumar al primer sector del depósito
+        const destinoDeposito = mov.OrigenDepositoID;
+        const destinoSector = mov.OrigenSectorID;
+        if (destinoDeposito) {
+          if (destinoSector) {
+            // intentar actualizar fila existente
+            const row = await db.get('SELECT * FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', d.ProductoID, destinoDeposito, destinoSector);
+            if (row) {
+              await db.run('UPDATE stock SET Unidad = Unidad + ?, Pack = Pack + ?, Pallets = Pallets + ? WHERE StockID = ?', d.Unidad || 0, d.Pack || 0, d.Pallets || 0, row.StockID);
+            } else {
+              await db.run('INSERT INTO stock (ProductoID, DepositoID, SectorID, Unidad, Pack, Pallets) VALUES (?, ?, ?, ?, ?, ?)', d.ProductoID, destinoDeposito, destinoSector || null, d.Unidad || 0, d.Pack || 0, d.Pallets || 0);
+            }
+          } else {
+            // no hay sector: buscar una fila existente para el deposito y sumar ahí, o crear una nueva con SectorID NULL
+            const row = await db.get('SELECT * FROM stock WHERE ProductoID = ? AND DepositoID = ? LIMIT 1', d.ProductoID, destinoDeposito);
+            if (row) {
+              await db.run('UPDATE stock SET Unidad = Unidad + ?, Pack = Pack + ?, Pallets = Pallets + ? WHERE StockID = ?', d.Unidad || 0, d.Pack || 0, d.Pallets || 0, row.StockID);
+            } else {
+              await db.run('INSERT INTO stock (ProductoID, DepositoID, SectorID, Unidad, Pack, Pallets) VALUES (?, ?, NULL, ?, ?, ?)', d.ProductoID, destinoDeposito, d.Unidad || 0, d.Pack || 0, d.Pallets || 0);
+            }
+          }
+        }
+      }
+    } finally { await stmt.finalize(); }
+
+    await db.exec('COMMIT');
+    res.json({ ok: true, MovimientoID: newMovId });
+  } catch (err) {
+    try { await db.exec('ROLLBACK'); } catch(e){}
+    console.error('Error POST /api/movimientos/:id/revert', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
 // Inventario endpoints
 // Productos
 app.get('/api/productos', async (req, res) => {
@@ -696,6 +854,17 @@ app.post('/api/productos/:id/variantes', async (req, res) => {
   try {
     const pid = req.params.id;
     const { Codigo, Medida, UnitsPerPack, PacksPerPallet, DefaultFlag } = req.body;
+    // Validaciones: Codigo no debe existir asignado a otro ProductoID
+    if (Codigo) {
+      const existing = await db.get('SELECT ProductoID, VarianteID FROM producto_variantes WHERE Codigo = ?', Codigo);
+      if (existing && existing.ProductoID && Number(existing.ProductoID) !== Number(pid)) {
+        return res.status(409).json({ ok: false, error: 'Codigo already exists for another product', ProductoID: existing.ProductoID, VarianteID: existing.VarianteID });
+      }
+    }
+    // Asegurar que el ProductoID existe
+    const prod = await db.get('SELECT ProductoID FROM productos WHERE ProductoID = ?', pid);
+    if (!prod) return res.status(400).json({ ok: false, error: 'Producto not found' });
+
     const r = await db.run('INSERT INTO producto_variantes (ProductoID, Codigo, Medida, UnitsPerPack, PacksPerPallet, DefaultFlag) VALUES (?, ?, ?, ?, ?, ?)', pid, Codigo, Medida || 'unidad', UnitsPerPack || 1, PacksPerPallet || 1, DefaultFlag ? 1 : 0);
     res.json({ ok: true, VarianteID: r.lastID });
   } catch (err) {
@@ -710,6 +879,17 @@ app.put('/api/productos/:id/variantes/:varId', async (req, res) => {
     const pid = req.params.id;
     const varId = req.params.varId;
     const { Codigo, Medida, UnitsPerPack, PacksPerPallet, DefaultFlag } = req.body;
+    // Validaciones: Codigo no debe existir asignado a otro ProductoID
+    if (Codigo) {
+      const existing = await db.get('SELECT ProductoID, VarianteID FROM producto_variantes WHERE Codigo = ?', Codigo);
+      if (existing && existing.VarianteID && Number(existing.VarianteID) !== Number(varId) && Number(existing.ProductoID) !== Number(pid)) {
+        return res.status(409).json({ ok: false, error: 'Codigo already exists for another product', ProductoID: existing.ProductoID, VarianteID: existing.VarianteID });
+      }
+    }
+    // Asegurar que el ProductoID existe
+    const prod = await db.get('SELECT ProductoID FROM productos WHERE ProductoID = ?', pid);
+    if (!prod) return res.status(400).json({ ok: false, error: 'Producto not found' });
+
     try {
       await db.run('UPDATE producto_variantes SET Codigo = ?, Medida = ?, UnitsPerPack = ?, PacksPerPallet = ?, DefaultFlag = ? WHERE VarianteID = ? AND ProductoID = ?', Codigo, Medida || 'unidad', UnitsPerPack || 1, PacksPerPallet || 1, DefaultFlag ? 1 : 0, varId, pid);
       res.json({ ok: true });
