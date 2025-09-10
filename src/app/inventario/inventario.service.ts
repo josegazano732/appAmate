@@ -32,6 +32,8 @@ export class InventarioService {
   listMovimientos() { return this.http.get<any[]>(`${this.api}/movimientos`); }
   getMovimiento(id:any) { return this.http.get<any>(`${this.api}/movimientos/${id}`); }
   revertMovimiento(id:any, motivo?:string){ return this.http.post<any>(`${this.api}/movimientos/${id}/revert`, { motivo: motivo || '' }); }
+  // Resolver NotaPedidoID a partir de RemitoNumero (fallback cuando NotaPedidoID es null)
+  resolveNotaByRemito(remito: string) { return this.http.get<{NotaPedidoID:number|null}>(`${this.api}/resolve-nota-por-remito`, { params: { remito } }); }
   // Variantes
   listVariantes(productoId:any){ return this.http.get<any[]>(`${this.api}/productos/${productoId}/variantes`); }
   createVariante(productoId:any, v:any){ return this.http.post(`${this.api}/productos/${productoId}/variantes`, v); }

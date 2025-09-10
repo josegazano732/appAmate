@@ -211,6 +211,22 @@ let db;
     Observaciones TEXT
   );`);
 
+  // Asegurar columna NotaPedidoID en movimientos para enlazar remitos creados desde notas
+  try {
+    const movCols = await db.all("PRAGMA table_info('movimientos')");
+    const movExisting = new Set(movCols.map(c => c.name));
+    if (!movExisting.has('NotaPedidoID')) {
+      try {
+        await db.exec("ALTER TABLE movimientos ADD COLUMN NotaPedidoID INTEGER;");
+        console.log('DB migration: añadida columna NotaPedidoID a movimientos');
+      } catch (err) {
+        console.warn('DB migration movimientos: no se pudo añadir NotaPedidoID', err.message || err);
+      }
+    }
+  } catch (err) {
+    console.warn('DB migration movimientos: error al verificar columnas', err.message || err);
+  }
+
   await db.exec(`CREATE TABLE IF NOT EXISTS movimiento_detalle (
     MovimientoDetalleID INTEGER PRIMARY KEY AUTOINCREMENT,
     MovimientoID INTEGER,
@@ -549,8 +565,9 @@ app.post('/api/notas-pedido/:id/remito', async (req, res) => {
 
     await db.exec('BEGIN TRANSACTION');
 
-    const result = await db.run(`INSERT INTO movimientos (Tipo, Fecha, RemitoNumero, OrigenDepositoID, OrigenSectorID, DestinoDepositoID, DestinoSectorID, Observaciones)
-      VALUES (?, datetime('now'), ?, ?, ?, NULL, NULL, ?)`, 'Salida', RemitoNumero || null, OrigenDepositoID || null, OrigenSectorID || null, Observaciones || null);
+    const result = await db.run(`INSERT INTO movimientos (Tipo, Fecha, RemitoNumero, OrigenDepositoID, OrigenSectorID, DestinoDepositoID, DestinoSectorID, Observaciones, NotaPedidoID)
+      VALUES (?, datetime('now'), ?, ?, ?, NULL, NULL, ?, ?)`,
+      'Salida', RemitoNumero || null, OrigenDepositoID || null, OrigenSectorID || null, Observaciones || null, notaId);
     const movimientoId = result.lastID;
 
     const stmt = await db.prepare('INSERT INTO movimiento_detalle (MovimientoID, ProductoID, Unidad, Pack, Pallets) VALUES (?, ?, ?, ?, ?)');
@@ -767,9 +784,9 @@ app.post('/api/movimientos/:id/revert', async (req, res) => {
 
     await db.exec('BEGIN TRANSACTION');
     const motivo = (req.body && req.body.motivo) ? String(req.body.motivo).slice(0,1000) : 'Reversión automática';
-    const result = await db.run(`INSERT INTO movimientos (Tipo, Fecha, RemitoNumero, OrigenDepositoID, OrigenSectorID, DestinoDepositoID, DestinoSectorID, Observaciones)
-      VALUES (?, datetime('now'), ?, NULL, NULL, ?, ?, ?)
-    `, 'Entrada Reversion', mov.RemitoNumero || null, mov.OrigenDepositoID || null, mov.OrigenSectorID || null, motivo);
+    const result = await db.run(`INSERT INTO movimientos (Tipo, Fecha, RemitoNumero, OrigenDepositoID, OrigenSectorID, DestinoDepositoID, DestinoSectorID, Observaciones, NotaPedidoID)
+      VALUES (?, datetime('now'), ?, NULL, NULL, ?, ?, ?, ?)
+    `, 'Entrada Reversion', mov.RemitoNumero || null, mov.OrigenDepositoID || null, mov.OrigenSectorID || null, motivo, mov.NotaPedidoID || null);
     const newMovId = result.lastID;
 
     const stmt = await db.prepare('INSERT INTO movimiento_detalle (MovimientoID, ProductoID, Unidad, Pack, Pallets) VALUES (?, ?, ?, ?, ?)');
@@ -1252,8 +1269,9 @@ app.post('/api/movimientos', async (req, res) => {
   try {
     await db.exec('BEGIN TRANSACTION');
 
-    const result = await db.run(`INSERT INTO movimientos (Tipo, Fecha, RemitoNumero, OrigenDepositoID, OrigenSectorID, DestinoDepositoID, DestinoSectorID, Observaciones)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, Tipo, Fecha, RemitoNumero, OrigenDepositoID, OrigenSectorID, DestinoDepositoID, DestinoSectorID, Observaciones);
+    const NotaPedidoID = req.body.NotaPedidoID || null;
+    const result = await db.run(`INSERT INTO movimientos (Tipo, Fecha, RemitoNumero, OrigenDepositoID, OrigenSectorID, DestinoDepositoID, DestinoSectorID, Observaciones, NotaPedidoID)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, Tipo, Fecha, RemitoNumero, OrigenDepositoID, OrigenSectorID, DestinoDepositoID, DestinoSectorID, Observaciones, NotaPedidoID);
     const movimientoId = result.lastID;
 
     if (Array.isArray(detalles)) {
@@ -1354,9 +1372,11 @@ app.get('/api/movimientos', async (req, res) => {
       const destinoDeposito = m.DestinoDepositoID ? await db.get('SELECT Nombre FROM depositos WHERE DepositoID = ?', m.DestinoDepositoID) : null;
       const destinoSector = m.DestinoSectorID ? await db.get('SELECT Nombre FROM sectores WHERE SectorID = ?', m.DestinoSectorID) : null;
 
-      // Intentar vincular movimiento a una Nota de Pedido por RemitoNumero -> OrdenCompra (lógica mejorada)
+      // Preferir NotaPedidoID ya persistida en la fila (si está), sino intentar vincular por RemitoNumero -> OrdenCompra
       let nota = null;
-      if (m.RemitoNumero) {
+      if (m.NotaPedidoID) {
+        nota = { NotaPedidoID: m.NotaPedidoID };
+      } else if (m.RemitoNumero) {
         const rem = String(m.RemitoNumero || '').trim();
         // 1) intento por OrdenCompra exacto
         nota = await db.get('SELECT NotaPedidoID FROM notas_pedido WHERE OrdenCompra = ? LIMIT 1', rem);
@@ -1406,9 +1426,11 @@ app.get('/api/movimientos/:id', async (req, res) => {
     const destinoDeposito = movimiento.DestinoDepositoID ? await db.get('SELECT Nombre FROM depositos WHERE DepositoID = ?', movimiento.DestinoDepositoID) : null;
     const destinoSector = movimiento.DestinoSectorID ? await db.get('SELECT Nombre FROM sectores WHERE SectorID = ?', movimiento.DestinoSectorID) : null;
 
-    // Buscar nota asociada (por RemitoNumero -> OrdenCompra) — lógica mejorada
+    // Preferir NotaPedidoID ya persistida en la fila (si existe), sino intentar resolver por RemitoNumero
     let nota = null;
-    if (movimiento.RemitoNumero) {
+    if (movimiento.NotaPedidoID) {
+      nota = { NotaPedidoID: movimiento.NotaPedidoID };
+    } else if (movimiento.RemitoNumero) {
       const rem = String(movimiento.RemitoNumero || '').trim();
       nota = await db.get('SELECT NotaPedidoID FROM notas_pedido WHERE OrdenCompra = ? LIMIT 1', rem);
       if (!nota) {
@@ -1437,6 +1459,33 @@ app.get('/api/movimientos/:id', async (req, res) => {
     res.json({ movimiento: movimientoEnriquecido, detalles });
   } catch (err) {
     console.error('Error GET /api/movimientos/:id', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Endpoint ligero: resolver NotaPedidoID por RemitoNumero (exacto / like / dígitos)
+app.get('/api/resolve-nota-por-remito', async (req, res) => {
+  try {
+    const rem = String(req.query.remito || '').trim();
+    if (!rem) return res.status(400).json({ ok: false, error: 'Parámetro remito requerido' });
+    let nota = null;
+    // 1) exacto por OrdenCompra
+    nota = await db.get('SELECT NotaPedidoID FROM notas_pedido WHERE OrdenCompra = ? LIMIT 1', rem);
+    // 2) por dígitos -> id
+    if (!nota) {
+      const digits = (rem.match(/\d+/g) || []).join('');
+      if (digits) {
+        const asId = parseInt(digits, 10);
+        if (!isNaN(asId)) nota = await db.get('SELECT NotaPedidoID FROM notas_pedido WHERE NotaPedidoID = ? LIMIT 1', asId);
+      }
+    }
+    // 3) LIKE
+    if (!nota) {
+      nota = await db.get('SELECT NotaPedidoID FROM notas_pedido WHERE OrdenCompra LIKE ? LIMIT 1', `%${rem}%`);
+    }
+    res.json({ NotaPedidoID: nota ? nota.NotaPedidoID : null });
+  } catch (err) {
+    console.error('Error GET /api/resolve-nota-por-remito', err.message || err);
     res.status(500).json({ ok: false, error: err.message || err });
   }
 });
