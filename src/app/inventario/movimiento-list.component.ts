@@ -50,6 +50,7 @@ import { ToastService } from '../shared/toast.service';
 
             <td>
               <button class="btn btn-sm btn-outline-secondary me-1" (click)="showDetalle(m)">Ver</button>
+              <a *ngIf="m.NotaPedidoID" class="btn btn-sm btn-outline-info ms-1" [routerLink]="['/inventario/ventas', m.NotaPedidoID]">Ver Factura</a>
               <button class="btn btn-sm btn-outline-danger" (click)="showRevertModal(m)">Revertir</button>
               <button class="btn btn-sm btn-outline-success ms-1" (click)="showFactModal(m)">Facturar</button>
             </td>
@@ -122,18 +123,33 @@ import { ToastService } from '../shared/toast.service';
 
               <h6>Detalles</h6>
               <table class="table table-sm">
-                <thead><tr><th>Producto</th><th>Unidad</th><th>Precio</th><th>Cantidad</th><th>IVA</th></tr></thead>
+                <thead><tr><th>Producto</th><th>Cantidad</th><th>Precio Unit.</th><th>Subtotal</th><th>IVA %</th></tr></thead>
                 <tbody>
                   <tr *ngFor="let d of factDetalles">
                     <td>{{ nombreProducto(d.ProductoID) }}</td>
-                    <td>{{d.Unidad ?? 0}}</td>
-                    <td>{{d.Precio ?? 0 | number:'1.2-2'}}</td>
-                    <td>{{d.Cantidad ?? 0}}</td>
-                    <td>{{d.Iva ?? 0 | number:'1.2-2'}}</td>
+                    <td class="text-end">{{ d.Cantidad ?? d.Unidad ?? 0 }}</td>
+                    <td class="text-end">{{ d.PrecioUnitario | number:'1.2-2' }}</td>
+                    <td class="text-end">{{ lineSubtotal(d) | number:'1.2-2' }}</td>
+                    <td class="text-end">
+                      <select class="form-select form-select-sm" [(ngModel)]="factForm.lineIva[d.ProductoID]" (ngModelChange)="recalculateTotals()">
+                        <option [ngValue]="0">0%</option>
+                        <option [ngValue]="10.5">10.5%</option>
+                        <option [ngValue]="21">21%</option>
+                      </select>
+                    </td>
                   </tr>
                   <tr *ngIf="factDetalles.length === 0"><td colspan="5" class="text-center">No hay detalles</td></tr>
                 </tbody>
               </table>
+
+              <div class="row">
+                <div class="col-6"></div>
+                <div class="col-6">
+                  <div class="d-flex justify-content-between"><div>Total Gravado</div><div class="text-end">{{ totals.totalGravado | number:'1.2-2' }}</div></div>
+                  <div class="d-flex justify-content-between"><div>Total IVA</div><div class="text-end">{{ totals.totalIva | number:'1.2-2' }}</div></div>
+                  <div class="d-flex justify-content-between"><div><strong>Total Gravado + IVA</strong></div><div class="text-end"><strong>{{ totals.totalGravadoPlusIva | number:'1.2-2' }}</strong></div></div>
+                </div>
+              </div>
             </div>
             <div class="modal-footer">
               <button class="btn btn-secondary" (click)="hideFactModal()">Cancelar</button>
@@ -143,45 +159,7 @@ import { ToastService } from '../shared/toast.service';
         </div>
       </div>
 
-          <!-- Facturar modal -->
-          <div class="modal" tabindex="-1" [ngClass]="{'show d-block': factTarget}" *ngIf="factTarget">
-            <div class="modal-dialog modal-lg">
-              <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title">Facturar movimiento {{factTarget?.MovimientoID}}</h5></div>
-                <div class="modal-body">
-                  <div class="mb-2 row">
-                    <div class="col-4"><label>Tipo Comp</label><input class="form-control" [(ngModel)]="factForm.TipoComp" /></div>
-                    <div class="col-3"><label>Punto Venta</label><input type="number" class="form-control" [(ngModel)]="factForm.PuntoVenta" /></div>
-                    <div class="col-5"><label>Número</label><input class="form-control" [(ngModel)]="factForm.NumeroComp" /></div>
-                  </div>
-                  <div class="mb-2"><label>Descuento</label><input type="number" class="form-control" [(ngModel)]="factForm.Descuento" /></div>
-
-                  <h6>Seleccionar IVA por línea</h6>
-                  <table class="table table-sm">
-                    <thead><tr><th>Producto</th><th>Cantidad</th><th>Precio unit.</th><th>IVA %</th></tr></thead>
-                    <tbody>
-                      <tr *ngFor="let d of factDetalles">
-                        <td>{{ nombreProducto(d.ProductoID) }}</td>
-                        <td>{{ (d.Unidad||0) + (d.Pack||0) + (d.Pallets||0) }}</td>
-                        <td>{{ (d.PrecioUnitario || 0) | number:'1.2-2' }}</td>
-                        <td>
-                          <select class="form-select form-select-sm" [(ngModel)]="factForm.lineIva[d.ProductoID]">
-                            <option [value]="0">0%</option>
-                            <option [value]="10">10%</option>
-                            <option [value]="21">21%</option>
-                          </select>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <div class="modal-footer">
-                  <button class="btn btn-secondary" (click)="hideFactModal()">Cancelar</button>
-                  <button class="btn btn-primary" (click)="confirmFacturar()">Facturar</button>
-                </div>
-              </div>
-            </div>
-          </div>
+          
 
         </div></div>
   `
@@ -201,6 +179,7 @@ export class MovimientoListComponent implements OnInit {
   factTarget: any = null;
   factForm: any = { TipoComp: 'FA', PuntoVenta: 10, NumeroComp: '', Descuento: 0, lineIva: {} };
   factDetalles: any[] = [];
+  totals: any = { noGravado: 0, totalIva: 0, totalConIva: 0 };
 
   constructor(private inv: InventarioService, private toast: ToastService) {}
 
@@ -231,7 +210,8 @@ export class MovimientoListComponent implements OnInit {
   showDetalle(m:any){
     this.selected = m;
     this.inv.getMovimiento(m.MovimientoID).subscribe((res:any) => {
-      this.detalles = res?.detalles || [];
+  console.log('DEBUG getMovimiento detalle response:', res);
+  this.detalles = res?.detalles || res?.movimiento?.detalles || [];
       // asegurar que tenemos nombres/descripcion de productos si faltan
       this.detalles.forEach((d:any) => {
         if (d.ProductoID && !this.productosMap[d.ProductoID]) {
@@ -256,15 +236,47 @@ export class MovimientoListComponent implements OnInit {
   }
 
   showFactModal(m:any){ this.factTarget = m; this.factForm = { TipoComp: 'FA', PuntoVenta: 10, NumeroComp: '', Descuento: 0, lineIva: {} }; this.factDetalles = []; 
-    this.inv.getMovimiento(m.MovimientoID).subscribe((res:any)=>{ this.factDetalles = res?.detalles || []; });
+    this.inv.getMovimiento(m.MovimientoID).subscribe((res:any)=>{ 
+      console.log('DEBUG getMovimiento for facturar response:', res);
+      this.factDetalles = res?.detalles || res?.movimiento?.detalles || [];
+      // inicializar precios editables por línea
+      this.factForm.linePrices = this.factForm.linePrices || {};
+      (this.factDetalles||[]).forEach((d:any) => {
+        this.factForm.linePrices[d.ProductoID] = this.factForm.linePrices[d.ProductoID] ?? (d.PrecioUnitario || d.Precio || 0);
+        // asegurarse de que exista una entrada para IVA
+        this.factForm.lineIva[d.ProductoID] = this.factForm.lineIva[d.ProductoID] ?? 0;
+      });
+      this.recalculateTotals();
+    });
   }
   hideFactModal(){ this.factTarget = null; this.factForm = { TipoComp: 'FA', PuntoVenta: 10, NumeroComp: '', Descuento: 0, lineIva: {} }; this.factDetalles = []; }
   confirmFacturar(){
     if (!this.factTarget) return;
-    this.inv.facturarMovimiento(this.factTarget.MovimientoID, this.factForm).subscribe((r:any)=>{
+  // enviar sólo IVA por línea y descuento (precios se toman del servidor/nota)
+  const payload = { TipoComp: this.factForm.TipoComp, PuntoVenta: this.factForm.PuntoVenta, NumeroComp: this.factForm.NumeroComp, Descuento: this.factForm.Descuento, lineIva: this.factForm.lineIva || {} };
+  this.inv.facturarMovimiento(this.factTarget.MovimientoID, payload).subscribe((r:any)=>{
       this.toast.success('Factura creada: ' + r.VentaID);
       this.hideFactModal(); this.load();
     }, (e:any)=>{ this.toast.error('Error al facturar'); });
+  }
+
+  lineSubtotal(d:any){
+    const precio = (d.PrecioUnitario || this.factForm.linePrices?.[d.ProductoID] || 0);
+    const cantidad = d.Cantidad ?? d.Unidad ?? 0;
+    const subtotal = Number(precio || 0) * Number(cantidad || 0);
+    return subtotal;
+  }
+
+  recalculateTotals(){
+    let totalGravado = 0, totalIva = 0;
+    for (const d of (this.factDetalles || [])){
+      const sub = this.lineSubtotal(d);
+      const iva = Number(this.factForm.lineIva?.[d.ProductoID] || 0);
+      const ivaAmount = sub * (iva/100);
+      totalGravado += sub;
+      totalIva += ivaAmount;
+    }
+    this.totals = { totalGravado, totalIva, totalGravadoPlusIva: totalGravado + totalIva, noGravado: 0 };
   }
 
   nombreProducto(pid:any){ return this.productosMap[pid] || pid; }

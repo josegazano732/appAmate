@@ -1,0 +1,28 @@
+<div class="card">
+  <div class="card-body">
+    <h4>Factura #{{ venta?.VentaID || '-' }} <small class="text-muted">{{ venta?.FechaComp }}</small></h4>
+    <div *ngIf="venta">
+      <div><strong>ClienteID:</strong> {{ venta.ClienteID }}</div>
+      <div><strong>Nota Pedido:</strong> <a *ngIf="venta.NotaPedidoID" [routerLink]="['/notas', venta.NotaPedidoID]">#{{venta.NotaPedidoID}}</a></div>
+      <div class="mt-3"><strong>Totales</strong>
+        <div>Subtotal: {{ venta.Subtotal }}</div>
+        <div>Total IVA: {{ venta.TotalIva }}</div>
+        <div><strong>Total: {{ venta.Total }}</strong></div>
+      </div>
+
+      <h5 class="mt-3">Detalle</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Producto</th><th>Cantidad</th><th>Precio Unit.</th><th>Total</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let d of detalles">
+            <td>{{ d.Descripcion || ('ID ' + d.ProductoID) }}</td>
+            <td class="text-end">{{ d.Cantidad }}</td>
+            <td class="text-end">{{ d.PrecioUnitario }}</td>
+            <td class="text-end">{{ d.TotalLinea }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div *ngIf="!venta" class="text-muted">Factura no encontrada</div>
+  </div>
+</div>

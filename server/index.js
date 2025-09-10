@@ -28,6 +28,14 @@ let db;
     driver: sqlite3.Database
   });
 
+  // helper para verificar existencia de columna en una tabla
+  async function columnExists(table, column) {
+    try {
+      const cols = await db.all(`PRAGMA table_info(${table})`);
+      return (cols || []).some(c => c.name && c.name.toLowerCase() === String(column).toLowerCase());
+    } catch (e) { return false; }
+  }
+
   await db.exec(`CREATE TABLE IF NOT EXISTS clientes (
     ClienteID INTEGER PRIMARY KEY AUTOINCREMENT,
     TIPO TEXT,
@@ -1483,6 +1491,98 @@ app.get('/api/movimientos/:id', async (req, res) => {
       }
     }
 
+    // Enriquecer cada detalle con PrecioUnitario calculado usando la nota (si existe) o el producto maestro,
+    // y con una cantidad normalizada en unidades (Unidad + Pack*UnitsPerPack + Pallets*PacksPerPallet*UnitsPerPack)
+    const enrichedDetalles = [];
+    for (const d of detalles) {
+      let unitsPerPack = 1, packsPerPallet = 1;
+      try {
+        const varRow = await db.get('SELECT UnitsPerPack, PacksPerPallet FROM producto_variantes WHERE ProductoID = ? AND DefaultFlag = 1 LIMIT 1', d.ProductoID);
+        if (varRow) {
+          unitsPerPack = Number(varRow.UnitsPerPack) || unitsPerPack;
+          packsPerPallet = Number(varRow.PacksPerPallet) || packsPerPallet;
+        } else {
+          const prodRow = await db.get('SELECT UnitsPerPack, PacksPerPallet FROM productos WHERE ProductoID = ?', d.ProductoID);
+          if (prodRow) {
+            unitsPerPack = Number(prodRow.UnitsPerPack) || unitsPerPack;
+            packsPerPallet = Number(prodRow.PacksPerPallet) || packsPerPallet;
+          }
+        }
+      } catch (e) { /* ignore and use defaults */ }
+
+      // calcular cantidad normalizada
+      const cantidad = (Number(d.Unidad) || 0) + (Number(d.Pack) || 0) * (unitsPerPack || 1) + (Number(d.Pallets) || 0) * (packsPerPallet || 1) * (unitsPerPack || 1);
+
+      // calcular precio unitario: intentar desde nota_detalle si existe nota, considerando Medida
+      let precioUnit = 0;
+      try {
+        if (nota && nota.NotaPedidoID) {
+          // intentar por Codigo de variante por defecto
+          let codigoVar = null;
+          const v = await db.get('SELECT Codigo FROM producto_variantes WHERE ProductoID = ? AND DefaultFlag = 1 LIMIT 1', d.ProductoID).catch(()=>null);
+          if (v && v.Codigo) codigoVar = v.Codigo;
+          let nd = null;
+
+          // intentar leer desde nota_detalle usando las columnas disponibles
+          const notaColsAll = await db.all("PRAGMA table_info('nota_detalle')");
+          const hasPrecio = (notaColsAll || []).some(c => c.name && c.name.toLowerCase() === 'precio');
+          const hasPrecioNeto = (notaColsAll || []).some(c => c.name && c.name.toLowerCase() === 'precioneto') || (notaColsAll || []).some(c => c.name && c.name.toLowerCase() === 'precioneto') || (notaColsAll || []).some(c => c.name && c.name.toLowerCase() === 'precioneto') || (notaColsAll || []).some(c => c.name && c.name.toLowerCase() === 'precioneto') || (notaColsAll || []).some(c => c.name && c.name.toLowerCase() === 'precioneto') || (notaColsAll || []).some(c => c.name && c.name.toLowerCase() === 'precioneto');
+          // build select columns
+          const baseCols = [];
+          if (hasPrecio) baseCols.push('Precio');
+          if (hasPrecioNeto) baseCols.push('PrecioNeto');
+          baseCols.push('Medida');
+
+          if (codigoVar) {
+            try {
+              const selectCols = baseCols.join(',');
+              nd = await db.get(`SELECT ${selectCols} FROM nota_detalle WHERE NotaPedidoID = ? AND Codigo = ? LIMIT 1`, nota.NotaPedidoID, codigoVar).catch(()=>null);
+            } catch (e) { nd = null; }
+          }
+
+          if (!nd) {
+            try {
+              const selectCols2 = baseCols.join(',');
+              nd = await db.get(`SELECT ${selectCols2} FROM nota_detalle WHERE NotaPedidoID = ? AND Codigo = (SELECT Codigo FROM productos WHERE ProductoID = ? LIMIT 1) LIMIT 1`, nota.NotaPedidoID, d.ProductoID).catch(()=>null);
+            } catch (e) { nd = null; }
+          }
+
+          if (nd) {
+            const medidaPrecio = (nd.Medida || 'unidad').toString().toLowerCase();
+            const rawPrecio = nd.Precio || nd.PrecioNeto || 0;
+            if (rawPrecio) {
+              if (medidaPrecio === 'pack') {
+                precioUnit = Number(rawPrecio) / (unitsPerPack || 1);
+              } else if (medidaPrecio === 'pallet' || medidaPrecio === 'pallets') {
+                precioUnit = Number(rawPrecio) / ((packsPerPallet || 1) * (unitsPerPack || 1));
+              } else {
+                precioUnit = Number(rawPrecio);
+              }
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+
+      // fallback a precio del producto maestro
+      if (!precioUnit) {
+        // seleccionar columnas disponibles en productos (inline)
+        const prodCols = await db.all("PRAGMA table_info('productos')");
+        const usePrecioP = (prodCols || []).some(c => c.name && c.name.toLowerCase() === 'precio');
+        const usePrecioNetoP = (prodCols || []).some(c => c.name && c.name.toLowerCase() === 'precioneto' || c.name && c.name.toLowerCase() === 'precioneto');
+        let p = null;
+        if (usePrecioP || usePrecioNetoP) {
+          const cols = [];
+          if (usePrecioP) cols.push('Precio');
+          if (usePrecioNetoP) cols.push('PrecioNeto');
+          const selectP = cols.join(',') || 'Precio';
+          p = await db.get(`SELECT ${selectP} FROM productos WHERE ProductoID = ?`, d.ProductoID).catch(()=>null);
+        }
+        if (p) precioUnit = p.Precio || p.PrecioNeto || 0;
+      }
+
+      enrichedDetalles.push({ ...d, PrecioUnitario: precioUnit, Cantidad: cantidad, NoGravado: 0 });
+    }
+
     const movimientoEnriquecido = {
       ...movimiento,
       OrigenDepositoNombre: origenDeposito ? origenDeposito.Nombre : null,
@@ -1492,7 +1592,7 @@ app.get('/api/movimientos/:id', async (req, res) => {
       NotaPedidoID: nota ? nota.NotaPedidoID : null
     };
 
-    res.json({ movimiento: movimientoEnriquecido, detalles });
+    res.json({ movimiento: movimientoEnriquecido, detalles: enrichedDetalles });
   } catch (err) {
     console.error('Error GET /api/movimientos/:id', err.message || err);
     res.status(500).json({ ok: false, error: err.message || err });
@@ -1502,7 +1602,7 @@ app.get('/api/movimientos/:id', async (req, res) => {
 // Facturar un movimiento (crear venta a partir de movimiento_detalle)
 app.post('/api/movimientos/:id/facturar', async (req, res) => {
   const movimientoId = req.params.id;
-  const { TipoComp, PuntoVenta, NumeroComp, Descuento = 0, lineIva = {} } = req.body || {};
+  const { TipoComp, PuntoVenta, NumeroComp, Descuento = 0, lineIva = {}, linePrices = {} } = req.body || {};
   // lineIva: { '<ProductoID>': ivaPercent }
   try {
     const movimiento = await db.get('SELECT * FROM movimientos WHERE MovimientoID = ?', movimientoId);
@@ -1540,8 +1640,11 @@ app.post('/api/movimientos/:id/facturar', async (req, res) => {
         // ignore, use defaults
       }
 
-      // Recuperar precio desde nota_detalle (y considerar la Medida en la nota)
+      // Recuperar precio desde payload (linePrices) si fue provisto por el cliente
       let precioUnit = 0;
+      if (linePrices && linePrices[String(d.ProductoID)] !== undefined && linePrices[String(d.ProductoID)] !== null) {
+        precioUnit = Number(linePrices[String(d.ProductoID)]) || 0;
+      }
       let nd = null;
       let medidaPrecio = 'unidad';
       if (notaId) {
@@ -1552,12 +1655,22 @@ app.post('/api/movimientos/:id/facturar', async (req, res) => {
           if (v && v.Codigo) codigoVar = v.Codigo;
         } catch (e) { /* ignore */ }
 
+        // construir columnas disponibles en nota_detalle
+        const notaColsF = await db.all("PRAGMA table_info('nota_detalle')");
+        const hasP = (notaColsF || []).some(c => c.name && c.name.toLowerCase() === 'precio');
+        const hasPN = (notaColsF || []).some(c => c.name && c.name.toLowerCase() === 'precioneto') || (notaColsF || []).some(c => c.name && c.name.toLowerCase() === 'precioneto');
+        const notaSelectCols = [];
+        if (hasP) notaSelectCols.push('Precio');
+        if (hasPN) notaSelectCols.push('PrecioNeto');
+        notaSelectCols.push('Medida');
+        const notaSelect = notaSelectCols.join(',');
+
         if (codigoVar) {
-          nd = await db.get('SELECT Precio, PrecioNeto, Medida FROM nota_detalle WHERE NotaPedidoID = ? AND Codigo = ? LIMIT 1', notaId, codigoVar);
+          nd = await db.get(`SELECT ${notaSelect} FROM nota_detalle WHERE NotaPedidoID = ? AND Codigo = ? LIMIT 1`, notaId, codigoVar).catch(()=>null);
         }
         // 2) si no, intentar por Codigo del producto maestro
         if (!nd) {
-          nd = await db.get('SELECT Precio, PrecioNeto, Medida FROM nota_detalle WHERE NotaPedidoID = ? AND Codigo = (SELECT Codigo FROM productos WHERE ProductoID = ? LIMIT 1) LIMIT 1', notaId, d.ProductoID);
+          nd = await db.get(`SELECT ${notaSelect} FROM nota_detalle WHERE NotaPedidoID = ? AND Codigo = (SELECT Codigo FROM productos WHERE ProductoID = ? LIMIT 1) LIMIT 1`, notaId, d.ProductoID).catch(()=>null);
         }
 
         if (nd) {
@@ -1580,8 +1693,17 @@ app.post('/api/movimientos/:id/facturar', async (req, res) => {
 
       // Si no hay precio en la nota, intentar obtener Precio del producto maestro (se asume por unidad)
       if (!precioUnit) {
-        const p = await db.get('SELECT Precio, PrecioNeto FROM productos WHERE ProductoID = ?', d.ProductoID);
-        if (p) precioUnit = p.Precio || p.PrecioNeto || 0;
+        const prodColsF = await db.all("PRAGMA table_info('productos')");
+        const hasPP = (prodColsF || []).some(c => c.name && c.name.toLowerCase() === 'precio');
+        const hasPPN = (prodColsF || []).some(c => c.name && c.name.toLowerCase() === 'precioneto');
+        if (hasPP || hasPPN) {
+          const colsP = [];
+          if (hasPP) colsP.push('Precio');
+          if (hasPPN) colsP.push('PrecioNeto');
+          const selP = colsP.join(',');
+          const p = await db.get(`SELECT ${selP} FROM productos WHERE ProductoID = ?`, d.ProductoID).catch(()=>null);
+          if (p) precioUnit = p.Precio || p.PrecioNeto || 0;
+        }
       }
 
       // Normalizar cantidad: unidades + packs*unitsPerPack + pallets*packsPerPallet*unitsPerPack
@@ -1659,6 +1781,23 @@ app.get('/api/resolve-nota-por-remito', async (req, res) => {
     res.json({ NotaPedidoID: nota ? nota.NotaPedidoID : null });
   } catch (err) {
     console.error('Error GET /api/resolve-nota-por-remito', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// GET venta por id con su detalle
+app.get('/api/ventas/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ ok: false, error: 'ID inválido' });
+    const venta = await db.get('SELECT * FROM ventas WHERE VentaID = ?', id);
+    if (!venta) return res.status(404).json({ ok: false, error: 'Venta no encontrada' });
+    const detalles = await db.all('SELECT * FROM venta_detalle WHERE VentaID = ? ORDER BY VentaDetalleID ASC', id);
+    // devolver la venta incluyendo un array 'detalles' para compatibilidad con el frontend
+    venta.detalles = detalles || [];
+    res.json(venta);
+  } catch (err) {
+    console.error('Error GET /api/ventas/:id', err && (err.stack || err.message || err));
     res.status(500).json({ ok: false, error: err.message || err });
   }
 });

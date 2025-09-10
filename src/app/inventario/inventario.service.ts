@@ -36,6 +36,8 @@ export class InventarioService {
   resolveNotaByRemito(remito: string) { return this.http.get<{NotaPedidoID:number|null}>(`${this.api}/resolve-nota-por-remito`, { params: { remito } }); }
   // Facturar un movimiento: body { TipoComp, PuntoVenta, NumeroComp, Descuento, lineIva }
   facturarMovimiento(movimientoId:any, body:any) { return this.http.post<any>(`${this.api}/movimientos/${movimientoId}/facturar`, body); }
+  // Ventas / facturas
+  getVenta(id:any) { return this.http.get<any>(`${this.api}/ventas/${id}`); }
   // Variantes
   listVariantes(productoId:any){ return this.http.get<any[]>(`${this.api}/productos/${productoId}/variantes`); }
   createVariante(productoId:any, v:any){ return this.http.post(`${this.api}/productos/${productoId}/variantes`, v); }

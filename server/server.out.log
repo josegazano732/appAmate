@@ -1,0 +1,13 @@
+Servidor API escuchando en puerto 3000 bind=0.0.0.0
+Interfaces de red: [
+  { iface: 'Ethernet', addrs: [ [Object], [Object] ] },
+  {
+    iface: 'Loopback Pseudo-Interface 1',
+    addrs: [ [Object], [Object] ]
+  }
+]
+DB sync: actualizadas 1 variante(s) para Codigo 7798441630018 -> ProductoID 56
+DB sync: actualizadas 1 variante(s) para Codigo 7798441630025 -> ProductoID 61
+DB sync: actualizadas 1 variante(s) para Codigo 7798441630032 -> ProductoID 58
+DB sync: actualizadas 1 variante(s) para Codigo 7798441630056 -> ProductoID 60
+DB sync: actualizadas 1 variante(s) para Codigo 7798441630063 -> ProductoID 59
