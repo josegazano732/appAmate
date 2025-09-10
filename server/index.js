@@ -238,6 +238,42 @@ let db;
     FOREIGN KEY (ProductoID) REFERENCES productos(ProductoID)
   );`);
 
+  // Ventas / facturación
+  await db.exec(`CREATE TABLE IF NOT EXISTS ventas (
+    VentaID INTEGER PRIMARY KEY AUTOINCREMENT,
+    ClienteID INTEGER,
+    NotaPedidoID INTEGER,
+    MovimientoID INTEGER,
+    FechaComp TEXT,
+    TipoComp TEXT,
+    PuntoVenta INTEGER,
+    NumeroComp TEXT,
+    Descuento REAL DEFAULT 0,
+    Subtotal REAL DEFAULT 0,
+    SubtotalNeto REAL DEFAULT 0,
+    SubtotalNoGravado REAL DEFAULT 0,
+    IvaPercent REAL DEFAULT 0,
+    TotalIva REAL DEFAULT 0,
+    Total REAL DEFAULT 0,
+    CreatedAt TEXT,
+    FOREIGN KEY (NotaPedidoID) REFERENCES notas_pedido(NotaPedidoID)
+  );`);
+
+  await db.exec(`CREATE TABLE IF NOT EXISTS venta_detalle (
+    VentaDetalleID INTEGER PRIMARY KEY AUTOINCREMENT,
+    VentaID INTEGER,
+    ProductoID INTEGER,
+    Descripcion TEXT,
+    Cantidad REAL,
+    PrecioUnitario REAL,
+    PrecioNeto REAL,
+    NoGravado REAL DEFAULT 0,
+    IvaPercent REAL DEFAULT 0,
+    IvaAmount REAL DEFAULT 0,
+    TotalLinea REAL DEFAULT 0,
+    FOREIGN KEY (VentaID) REFERENCES ventas(VentaID)
+  );`);
+
   // Verificar columnas nuevas en notas_pedido y agregarlas si faltan (migra en caliente)
   try {
     const cols = await db.all("PRAGMA table_info('notas_pedido')");
@@ -1459,6 +1495,143 @@ app.get('/api/movimientos/:id', async (req, res) => {
     res.json({ movimiento: movimientoEnriquecido, detalles });
   } catch (err) {
     console.error('Error GET /api/movimientos/:id', err.message || err);
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Facturar un movimiento (crear venta a partir de movimiento_detalle)
+app.post('/api/movimientos/:id/facturar', async (req, res) => {
+  const movimientoId = req.params.id;
+  const { TipoComp, PuntoVenta, NumeroComp, Descuento = 0, lineIva = {} } = req.body || {};
+  // lineIva: { '<ProductoID>': ivaPercent }
+  try {
+    const movimiento = await db.get('SELECT * FROM movimientos WHERE MovimientoID = ?', movimientoId);
+    if (!movimiento) return res.status(404).json({ ok: false, error: 'Movimiento no encontrado' });
+
+    const detalles = await db.all('SELECT * FROM movimiento_detalle WHERE MovimientoID = ?', movimientoId);
+    if (!detalles || detalles.length === 0) return res.status(400).json({ ok: false, error: 'Movimiento sin detalles' });
+
+    // Determinar ClienteID y NotaPedidoID si están presentes
+    let clienteId = null; let notaId = movimiento.NotaPedidoID || null;
+    if (notaId) {
+      const notaRow = await db.get('SELECT ClienteID FROM notas_pedido WHERE NotaPedidoID = ?', notaId);
+      if (notaRow) clienteId = notaRow.ClienteID;
+    }
+
+    // Calcular líneas: necesitar precio unitario por producto (tomar desde nota_detalle si existe, o producto maestro)
+    let subtotal = 0, subtotalNeto = 0, subtotalNoGravado = 0, totalIva = 0;
+    const ventaLines = [];
+    for (const d of detalles) {
+      // Obtener equivalencias (UnitsPerPack, PacksPerPallet) desde la variante por defecto o producto
+      let unitsPerPack = 1, packsPerPallet = 1;
+      try {
+        const varRow = await db.get('SELECT UnitsPerPack, PacksPerPallet FROM producto_variantes WHERE ProductoID = ? AND DefaultFlag = 1 LIMIT 1', d.ProductoID);
+        if (varRow) {
+          unitsPerPack = Number(varRow.UnitsPerPack) || unitsPerPack;
+          packsPerPallet = Number(varRow.PacksPerPallet) || packsPerPallet;
+        } else {
+          const prodRow = await db.get('SELECT UnitsPerPack, PacksPerPallet FROM productos WHERE ProductoID = ?', d.ProductoID);
+          if (prodRow) {
+            unitsPerPack = Number(prodRow.UnitsPerPack) || unitsPerPack;
+            packsPerPallet = Number(prodRow.PacksPerPallet) || packsPerPallet;
+          }
+        }
+      } catch (e) {
+        // ignore, use defaults
+      }
+
+      // Recuperar precio desde nota_detalle (y considerar la Medida en la nota)
+      let precioUnit = 0;
+      let nd = null;
+      let medidaPrecio = 'unidad';
+      if (notaId) {
+        // 1) intentar por Codigo de la variante por defecto
+        let codigoVar = null;
+        try {
+          const v = await db.get('SELECT Codigo FROM producto_variantes WHERE ProductoID = ? AND DefaultFlag = 1 LIMIT 1', d.ProductoID);
+          if (v && v.Codigo) codigoVar = v.Codigo;
+        } catch (e) { /* ignore */ }
+
+        if (codigoVar) {
+          nd = await db.get('SELECT Precio, PrecioNeto, Medida FROM nota_detalle WHERE NotaPedidoID = ? AND Codigo = ? LIMIT 1', notaId, codigoVar);
+        }
+        // 2) si no, intentar por Codigo del producto maestro
+        if (!nd) {
+          nd = await db.get('SELECT Precio, PrecioNeto, Medida FROM nota_detalle WHERE NotaPedidoID = ? AND Codigo = (SELECT Codigo FROM productos WHERE ProductoID = ? LIMIT 1) LIMIT 1', notaId, d.ProductoID);
+        }
+
+        if (nd) {
+          medidaPrecio = (nd.Medida || 'unidad').toString().toLowerCase();
+          const rawPrecio = nd.Precio || nd.PrecioNeto || 0;
+          if (rawPrecio) {
+            if (medidaPrecio === 'pack') {
+              // precio en nota por pack -> convertir a precio por unidad
+              precioUnit = Number(rawPrecio) / (unitsPerPack || 1);
+            } else if (medidaPrecio === 'pallet' || medidaPrecio === 'pallets') {
+              // precio por pallet -> convertir a precio por unidad
+              precioUnit = Number(rawPrecio) / ((packsPerPallet || 1) * (unitsPerPack || 1));
+            } else {
+              // assume precio por unidad
+              precioUnit = Number(rawPrecio);
+            }
+          }
+        }
+      }
+
+      // Si no hay precio en la nota, intentar obtener Precio del producto maestro (se asume por unidad)
+      if (!precioUnit) {
+        const p = await db.get('SELECT Precio, PrecioNeto FROM productos WHERE ProductoID = ?', d.ProductoID);
+        if (p) precioUnit = p.Precio || p.PrecioNeto || 0;
+      }
+
+      // Normalizar cantidad: unidades + packs*unitsPerPack + pallets*packsPerPallet*unitsPerPack
+      const cantidad = (Number(d.Unidad) || 0) + (Number(d.Pack) || 0) * (unitsPerPack || 1) + (Number(d.Pallets) || 0) * (packsPerPallet || 1) * (unitsPerPack || 1);
+      const lineaNeto = (Number(precioUnit) || 0) * cantidad;
+      const ivaPercent = (lineIva && lineIva[String(d.ProductoID)]) ? Number(lineIva[String(d.ProductoID)]) : 0;
+      const ivaAmount = lineaNeto * (ivaPercent / 100);
+      const totalLinea = lineaNeto + ivaAmount;
+
+      subtotal += lineaNeto;
+      totalIva += ivaAmount;
+      // Asumir todo como neto salvo que se identifique NoGravado (no implementado aún)
+      subtotalNeto += lineaNeto;
+
+      // Obtener descripción del producto si es posible
+      let descripcion = '';
+      try {
+        const pdesc = await db.get('SELECT ProductoDescripcion FROM productos WHERE ProductoID = ?', d.ProductoID);
+        if (pdesc) descripcion = pdesc.ProductoDescripcion || '';
+      } catch (e) { /* ignore */ }
+
+      ventaLines.push({ ProductoID: d.ProductoID, Descripcion: descripcion || '', Cantidad: cantidad, PrecioUnitario: precioUnit, PrecioNeto: lineaNeto, NoGravado: 0, IvaPercent: ivaPercent, IvaAmount: ivaAmount, TotalLinea: totalLinea });
+    }
+
+    // Aplicar descuento simple sobre subtotalNeto
+    const descuento = Number(Descuento) || 0;
+    const subtotalNetoAfterDesc = subtotalNeto - descuento;
+    const total = subtotalNetoAfterDesc + totalIva;
+
+    const now = new Date().toISOString().slice(0,19).replace('T',' ');
+    const insertVenta = await db.run(`INSERT INTO ventas (ClienteID, NotaPedidoID, MovimientoID, FechaComp, TipoComp, PuntoVenta, NumeroComp, Descuento, Subtotal, SubtotalNeto, SubtotalNoGravado, IvaPercent, TotalIva, Total, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      clienteId, notaId, movimientoId, now, TipoComp || 'FA', PuntoVenta || 0, NumeroComp || '', descuento, subtotal, subtotalNetoAfterDesc, subtotalNoGravado, 0, totalIva, total, now
+    );
+
+    const ventaId = insertVenta.lastID;
+    const stmt = await db.prepare('INSERT INTO venta_detalle (VentaID, ProductoID, Descripcion, Cantidad, PrecioUnitario, PrecioNeto, NoGravado, IvaPercent, IvaAmount, TotalLinea) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    try {
+      for (const vl of ventaLines) {
+        await stmt.run(ventaId, vl.ProductoID, vl.Descripcion, vl.Cantidad, vl.PrecioUnitario, vl.PrecioNeto, vl.NoGravado, vl.IvaPercent, vl.IvaAmount, vl.TotalLinea);
+      }
+    } finally { await stmt.finalize(); }
+
+    // Marcar nota como facturada si existe
+    if (notaId) {
+      await db.run("UPDATE notas_pedido SET EstadoFacturacion = ?, Estado = ? WHERE NotaPedidoID = ?", 'Facturado', 'Facturado', notaId);
+    }
+
+    res.json({ ok: true, VentaID: ventaId, totals: { Subtotal: subtotal, SubtotalNeto: subtotalNetoAfterDesc, TotalIva: totalIva, Total: total } });
+  } catch (err) {
+    console.error('Error POST /api/movimientos/:id/facturar', err.message || err);
     res.status(500).json({ ok: false, error: err.message || err });
   }
 });

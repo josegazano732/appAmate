@@ -51,6 +51,7 @@ import { ToastService } from '../shared/toast.service';
             <td>
               <button class="btn btn-sm btn-outline-secondary me-1" (click)="showDetalle(m)">Ver</button>
               <button class="btn btn-sm btn-outline-danger" (click)="showRevertModal(m)">Revertir</button>
+              <button class="btn btn-sm btn-outline-success ms-1" (click)="showFactModal(m)">Facturar</button>
             </td>
           </tr>
         </tbody>
@@ -72,7 +73,7 @@ import { ToastService } from '../shared/toast.service';
         </table>
       </div>
 
-      <!-- Revert modal -->
+  <!-- Revert modal -->
       <div class="modal" tabindex="-1" [ngClass]="{'show d-block': revertTarget}" *ngIf="revertTarget">
         <div class="modal-dialog">
           <div class="modal-content">
@@ -89,7 +90,100 @@ import { ToastService } from '../shared/toast.service';
         </div>
       </div>
 
-    </div></div>
+      <!-- Factura modal -->
+      <div class="modal" tabindex="-1" [ngClass]="{'show d-block': factTarget}" *ngIf="factTarget">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Facturar movimiento {{factTarget?.MovimientoID}}</h5>
+              <button type="button" class="btn-close" (click)="hideFactModal()"></button>
+            </div>
+            <div class="modal-body">
+              <div class="mb-3">
+                <label>Tipo de Comprobante</label>
+                <select class="form-select" [(ngModel)]="factForm.TipoComp">
+                  <option value="FA">Factura A</option>
+                  <option value="FB">Factura B</option>
+                  <option value="NC">Nota de Crédito</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label>Punto de Venta</label>
+                <input type="number" class="form-control" [(ngModel)]="factForm.PuntoVenta" min="1">
+              </div>
+              <div class="mb-3">
+                <label>Número de Comprobante</label>
+                <input type="number" class="form-control" [(ngModel)]="factForm.NumeroComp" min="1">
+              </div>
+              <div class="mb-3">
+                <label>Descuento</label>
+                <input type="number" class="form-control" [(ngModel)]="factForm.Descuento" min="0" step="0.01">
+              </div>
+
+              <h6>Detalles</h6>
+              <table class="table table-sm">
+                <thead><tr><th>Producto</th><th>Unidad</th><th>Precio</th><th>Cantidad</th><th>IVA</th></tr></thead>
+                <tbody>
+                  <tr *ngFor="let d of factDetalles">
+                    <td>{{ nombreProducto(d.ProductoID) }}</td>
+                    <td>{{d.Unidad ?? 0}}</td>
+                    <td>{{d.Precio ?? 0 | number:'1.2-2'}}</td>
+                    <td>{{d.Cantidad ?? 0}}</td>
+                    <td>{{d.Iva ?? 0 | number:'1.2-2'}}</td>
+                  </tr>
+                  <tr *ngIf="factDetalles.length === 0"><td colspan="5" class="text-center">No hay detalles</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" (click)="hideFactModal()">Cancelar</button>
+              <button class="btn btn-primary" (click)="confirmFacturar()">Facturar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+          <!-- Facturar modal -->
+          <div class="modal" tabindex="-1" [ngClass]="{'show d-block': factTarget}" *ngIf="factTarget">
+            <div class="modal-dialog modal-lg">
+              <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Facturar movimiento {{factTarget?.MovimientoID}}</h5></div>
+                <div class="modal-body">
+                  <div class="mb-2 row">
+                    <div class="col-4"><label>Tipo Comp</label><input class="form-control" [(ngModel)]="factForm.TipoComp" /></div>
+                    <div class="col-3"><label>Punto Venta</label><input type="number" class="form-control" [(ngModel)]="factForm.PuntoVenta" /></div>
+                    <div class="col-5"><label>Número</label><input class="form-control" [(ngModel)]="factForm.NumeroComp" /></div>
+                  </div>
+                  <div class="mb-2"><label>Descuento</label><input type="number" class="form-control" [(ngModel)]="factForm.Descuento" /></div>
+
+                  <h6>Seleccionar IVA por línea</h6>
+                  <table class="table table-sm">
+                    <thead><tr><th>Producto</th><th>Cantidad</th><th>Precio unit.</th><th>IVA %</th></tr></thead>
+                    <tbody>
+                      <tr *ngFor="let d of factDetalles">
+                        <td>{{ nombreProducto(d.ProductoID) }}</td>
+                        <td>{{ (d.Unidad||0) + (d.Pack||0) + (d.Pallets||0) }}</td>
+                        <td>{{ (d.PrecioUnitario || 0) | number:'1.2-2' }}</td>
+                        <td>
+                          <select class="form-select form-select-sm" [(ngModel)]="factForm.lineIva[d.ProductoID]">
+                            <option [value]="0">0%</option>
+                            <option [value]="10">10%</option>
+                            <option [value]="21">21%</option>
+                          </select>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="modal-footer">
+                  <button class="btn btn-secondary" (click)="hideFactModal()">Cancelar</button>
+                  <button class="btn btn-primary" (click)="confirmFacturar()">Facturar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div></div>
   `
 })
 export class MovimientoListComponent implements OnInit {
@@ -102,6 +196,11 @@ export class MovimientoListComponent implements OnInit {
 
   revertTarget: any = null;
   revertMotivo: string = '';
+
+  // Facturación
+  factTarget: any = null;
+  factForm: any = { TipoComp: 'FA', PuntoVenta: 10, NumeroComp: '', Descuento: 0, lineIva: {} };
+  factDetalles: any[] = [];
 
   constructor(private inv: InventarioService, private toast: ToastService) {}
 
@@ -154,6 +253,18 @@ export class MovimientoListComponent implements OnInit {
     }, (e:any)=>{
       this.toast.error('Error al revertir');
     });
+  }
+
+  showFactModal(m:any){ this.factTarget = m; this.factForm = { TipoComp: 'FA', PuntoVenta: 10, NumeroComp: '', Descuento: 0, lineIva: {} }; this.factDetalles = []; 
+    this.inv.getMovimiento(m.MovimientoID).subscribe((res:any)=>{ this.factDetalles = res?.detalles || []; });
+  }
+  hideFactModal(){ this.factTarget = null; this.factForm = { TipoComp: 'FA', PuntoVenta: 10, NumeroComp: '', Descuento: 0, lineIva: {} }; this.factDetalles = []; }
+  confirmFacturar(){
+    if (!this.factTarget) return;
+    this.inv.facturarMovimiento(this.factTarget.MovimientoID, this.factForm).subscribe((r:any)=>{
+      this.toast.success('Factura creada: ' + r.VentaID);
+      this.hideFactModal(); this.load();
+    }, (e:any)=>{ this.toast.error('Error al facturar'); });
   }
 
   nombreProducto(pid:any){ return this.productosMap[pid] || pid; }

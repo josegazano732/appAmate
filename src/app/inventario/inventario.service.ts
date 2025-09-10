@@ -34,6 +34,8 @@ export class InventarioService {
   revertMovimiento(id:any, motivo?:string){ return this.http.post<any>(`${this.api}/movimientos/${id}/revert`, { motivo: motivo || '' }); }
   // Resolver NotaPedidoID a partir de RemitoNumero (fallback cuando NotaPedidoID es null)
   resolveNotaByRemito(remito: string) { return this.http.get<{NotaPedidoID:number|null}>(`${this.api}/resolve-nota-por-remito`, { params: { remito } }); }
+  // Facturar un movimiento: body { TipoComp, PuntoVenta, NumeroComp, Descuento, lineIva }
+  facturarMovimiento(movimientoId:any, body:any) { return this.http.post<any>(`${this.api}/movimientos/${movimientoId}/facturar`, body); }
   // Variantes
   listVariantes(productoId:any){ return this.http.get<any[]>(`${this.api}/productos/${productoId}/variantes`); }
   createVariante(productoId:any, v:any){ return this.http.post(`${this.api}/productos/${productoId}/variantes`, v); }
