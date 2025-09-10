@@ -486,14 +486,24 @@ app.get('/api/notas-pedido/:id/depositos-disponibles', async (req, res) => {
         const variante = await db.get('SELECT * FROM producto_variantes WHERE Codigo = ?', codigo);
         const producto = variante ? await db.get('SELECT * FROM productos WHERE ProductoID = ?', variante.ProductoID) : await db.get('SELECT * FROM productos WHERE Codigo = ?', codigo);
         const prodId = variante ? variante.ProductoID : (producto ? producto.ProductoID : null);
-        if (!prodId) { details.push({ Codigo: codigo, availableUnits: 0 }); continue; }
-        const unitsPerPack = variante ? (Number(variante.UnitsPerPack) || 1) : (producto ? (Number(producto.UnitsPerPack) || 1) : 1);
-        const packsPerPallet = variante ? (Number(variante.PacksPerPallet) || 1) : (producto ? (Number(producto.PacksPerPallet) || 1) : 1);
+        if (!prodId) { details.push({ Codigo: codigo, availableUnits: 0, available: { Unidad: 0, Pack: 0, Pallets: 0 } }); continue; }
         const rows = await db.all('SELECT Unidad, Pack, Pallets FROM stock WHERE ProductoID = ? AND DepositoID = ?', prodId, d.DepositoID);
         let availableUnits = 0;
-        for (const r of rows) availableUnits += (Number(r.Unidad) || 0) + (Number(r.Pack) || 0) * unitsPerPack + (Number(r.Pallets) || 0) * unitsPerPack * packsPerPallet;
-        if (availableUnits > 0) anyAvailable = true;
-        details.push({ Codigo: codigo, availableUnits });
+        let availUnidad = 0, availPack = 0, availPallets = 0;
+        for (const r of rows) {
+          const u = (Number(r.Unidad) || 0);
+          const p = (Number(r.Pack) || 0);
+          const pl = (Number(r.Pallets) || 0);
+          availUnidad += u;
+          availPack += p;
+          availPallets += pl;
+        }
+        // Compute availableUnits using product/variant equivalences to keep backward compatibility
+        const unitsPerPack = variante ? (Number(variante.UnitsPerPack) || 1) : (producto ? (Number(producto.UnitsPerPack) || 1) : 1);
+        const packsPerPallet = variante ? (Number(variante.PacksPerPallet) || 1) : (producto ? (Number(producto.PacksPerPallet) || 1) : 1);
+        availableUnits = availUnidad + availPack * unitsPerPack + availPallets * unitsPerPack * packsPerPallet;
+        if (availableUnits > 0 || availUnidad > 0 || availPack > 0 || availPallets > 0) anyAvailable = true;
+        details.push({ Codigo: codigo, availableUnits, available: { Unidad: availUnidad, Pack: availPack, Pallets: availPallets } });
       }
       out.push({ DepositoID: d.DepositoID, Nombre: d.Nombre, anyAvailable, details });
     }
@@ -523,62 +533,70 @@ app.post('/api/notas-pedido/:id/remito', async (req, res) => {
 
     const stmt = await db.prepare('INSERT INTO movimiento_detalle (MovimientoID, ProductoID, Unidad, Pack, Pallets) VALUES (?, ?, ?, ?, ?)');
     try {
-  for (const d of detallesNota) {
+      for (const d of detallesNota) {
         const codigo = d.Codigo;
         const cantidad = parseFloat(d.Cantidad || 0) || 0;
 
-          // mapear a variante o producto
-          let variante = await db.get('SELECT * FROM producto_variantes WHERE Codigo = ?', codigo);
-          let producto = null;
-          // preferir la medida guardada en el detalle si existe
-          let medida = (d.Medida || '').toString() || null;
-          if (variante) {
-            producto = await db.get('SELECT * FROM productos WHERE ProductoID = ?', variante.ProductoID);
-            medida = medida || variante.Medida || producto?.DefaultMeasure || 'unidad';
-          } else {
-            producto = await db.get('SELECT * FROM productos WHERE Codigo = ?', codigo);
-            medida = medida || (producto ? (producto.DefaultMeasure || 'unidad') : 'unidad');
-          }
+        // mapear a variante o producto
+        let variante = await db.get('SELECT * FROM producto_variantes WHERE Codigo = ?', codigo);
+        let producto = null;
+        // preferir la medida guardada en el detalle si existe
+        let medida = (d.Medida || '').toString() || null;
+        if (variante) {
+          producto = await db.get('SELECT * FROM productos WHERE ProductoID = ?', variante.ProductoID);
+          medida = medida || variante.Medida || producto?.DefaultMeasure || 'unidad';
+        } else {
+          producto = await db.get('SELECT * FROM productos WHERE Codigo = ?', codigo);
+          medida = medida || (producto ? (producto.DefaultMeasure || 'unidad') : 'unidad');
+        }
 
-        // Normalizar cantidad usando la misma lógica que /api/movimientos
+        // Interpretar la cantidad según la medida: descontar en la columna correspondiente
         let unidad = 0, pack = 0, pallets = 0;
-        const unitsPerPack = variante ? (Number(variante.UnitsPerPack) || 1) : (producto ? (Number(producto.UnitsPerPack) || 1) : 1);
-        const packsPerPallet = variante ? (Number(variante.PacksPerPallet) || 1) : (producto ? (Number(producto.PacksPerPallet) || 1) : 1);
         const med = String(medida || 'unidad').toLowerCase();
-        if (med === 'unidad' || med === 'u') unidad = cantidad;
-        else if (med === 'pack') unidad = cantidad * unitsPerPack;
-        else if (med === 'pallet' || med === 'pallets') unidad = cantidad * packsPerPallet * unitsPerPack;
-        else { await db.exec('ROLLBACK'); return res.status(400).json({ ok: false, error: 'Medida desconocida en detalle' }); }
+        if (med === 'unidad' || med === 'u') {
+          unidad = cantidad;
+        } else if (med === 'pack') {
+          pack = cantidad;
+        } else if (med === 'pallet' || med === 'pallets') {
+          pallets = cantidad;
+        } else {
+          await db.exec('ROLLBACK');
+          return res.status(400).json({ ok: false, error: 'Medida desconocida en detalle' });
+        }
 
-  // Determinar ProductoID para stock
-  const stockProductoId = variante ? variante.ProductoID : (producto ? producto.ProductoID : null);
+        // Determinar ProductoID para stock
+        const stockProductoId = variante ? variante.ProductoID : (producto ? producto.ProductoID : null);
         if (!stockProductoId) { await db.exec('ROLLBACK'); return res.status(400).json({ ok: false, error: 'Producto/Variante no encontrada para codigo ' + codigo }); }
 
-        // Validar stock en origen (convertimos todo a unidades normalizadas)
-        let shippedUnits = unidad; // por defecto intentamos enviar la cantidad solicitada
+        // Validar stock en origen por columna (Unidad/Pack/Pallets)
+        let shippedUnidad = unidad, shippedPack = pack, shippedPallets = pallets;
         if (OrigenDepositoID) {
           const origenRow = await db.get('SELECT * FROM stock WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?', stockProductoId, OrigenDepositoID, OrigenSectorID);
           const origenUnidad = origenRow ? (parseFloat(origenRow.Unidad) || 0) : 0;
           const origenPack = origenRow ? (parseInt(origenRow.Pack) || 0) : 0;
           const origenPallets = origenRow ? (parseFloat(origenRow.Pallets) || 0) : 0;
-          const availableUnits = origenUnidad + (origenPack * unitsPerPack) + (origenPallets * unitsPerPack * packsPerPallet);
-          if (availableUnits < unidad) {
+
+          // Si no hay suficiente en la columna correspondiente
+          if (origenUnidad < unidad || origenPack < pack || origenPallets < pallets) {
             if (!forzar) {
               await db.exec('ROLLBACK');
-              return res.status(400).json({ ok: false, error: 'Stock insuficiente en origen', detalle: { Codigo: codigo, ProductoID: stockProductoId, solicitado: { Unidad: unidad }, disponibleUnits: availableUnits } });
+              return res.status(400).json({ ok: false, error: 'Stock insuficiente en origen', detalle: { Codigo: codigo, ProductoID: stockProductoId, solicitado: { Unidad: unidad, Pack: pack, Pallets: pallets }, disponible: { Unidad: origenUnidad, Pack: origenPack, Pallets: origenPallets } } });
             }
-            // Forzar: enviamos lo que haya disponible (puede ser 0)
-            shippedUnits = availableUnits;
+            // Forzar: enviar lo que haya disponible por columna
+            shippedUnidad = Math.min(origenUnidad, unidad);
+            shippedPack = Math.min(origenPack, pack);
+            shippedPallets = Math.min(origenPallets, pallets);
           }
         }
 
-        // Insertar detalle del movimiento (almacenar unidades normalizadas)
-        // Usamos la columna Unidad para almacenar la cantidad normalizada enviada
-        await stmt.run(movimientoId, stockProductoId, shippedUnits, 0, 0);
+        // Insertar detalle del movimiento usando las columnas correspondientes
+        await stmt.run(movimientoId, stockProductoId, shippedUnidad, shippedPack, shippedPallets);
 
-        // Descontar stock en origen (restamos en la columna Unidad la cantidad enviada)
+        // Descontar stock en origen en las columnas correspondientes
         if (OrigenDepositoID) {
-          await db.run(`UPDATE stock SET Unidad = Unidad - ? WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?`, shippedUnits, stockProductoId, OrigenDepositoID, OrigenSectorID);
+          if (shippedUnidad) await db.run(`UPDATE stock SET Unidad = Unidad - ? WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?`, shippedUnidad, stockProductoId, OrigenDepositoID, OrigenSectorID);
+          if (shippedPack) await db.run(`UPDATE stock SET Pack = Pack - ? WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?`, shippedPack, stockProductoId, OrigenDepositoID, OrigenSectorID);
+          if (shippedPallets) await db.run(`UPDATE stock SET Pallets = Pallets - ? WHERE ProductoID = ? AND DepositoID = ? AND SectorID = ?`, shippedPallets, stockProductoId, OrigenDepositoID, OrigenSectorID);
         }
       }
     } finally {

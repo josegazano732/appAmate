@@ -28,12 +28,13 @@ import { InventarioService } from '../inventario/inventario.service';
 
           <h6>Detalles</h6>
           <table class="table table-sm">
-            <thead><tr><th>Codigo</th><th>Cantidad</th><th>Medida</th></tr></thead>
+            <thead><tr><th>Codigo</th><th>Cantidad</th><th>Medida</th><th>Columna usada</th></tr></thead>
             <tbody>
               <tr *ngFor="let d of detalles">
                 <td>{{d.Codigo}}</td>
                 <td><input class="form-control form-control-sm" [(ngModel)]="d.Cantidad" /></td>
                 <td>{{d.Medida}}</td>
+                <td>{{columnFor(d)}}</td>
               </tr>
             </tbody>
           </table>
@@ -41,12 +42,16 @@ import { InventarioService } from '../inventario/inventario.service';
           <div *ngIf="disponibilidadPreview?.length">
             <h6>Disponibilidad en depósito seleccionado</h6>
             <table class="table table-sm">
-              <thead><tr><th>Codigo</th><th>Disponible (unidades)</th><th>Solicitado (unidades)</th></tr></thead>
+              <thead><tr><th>Codigo</th><th>Disponible (Unidad / Pack / Pallet)</th><th>Solicitado (según medida)</th></tr></thead>
               <tbody>
                 <tr *ngFor="let p of disponibilidadPreview">
                   <td>{{p.Codigo}}</td>
-                  <td>{{p.availableUnits}}</td>
-                  <td>{{p.requestedUnits}}</td>
+                  <td>
+                    U: {{p.available?.Unidad || 0}} / P: {{p.available?.Pack || 0}} / PL: {{p.available?.Pallets || 0}}
+                  </td>
+                  <td>
+                    {{requestedFor(p.Codigo)}} (col: {{columnForCodigo(p.Codigo)}})
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -96,6 +101,26 @@ export class RemitoFormComponent implements OnInit {
       // fallback to simple list
       this.inv.listDepositos().subscribe((ds:any[])=>{ this.depositos = ds || []; if (this.depositos.length) { this.origenDeposito = this.depositos[0].DepositoID; this.loadSectores(this.origenDeposito);} }, ()=>{});
     });
+  }
+  columnFor(d:any){
+    const med = (d?.Medida || '').toString().toLowerCase();
+    if (med === 'unidad' || med === 'u') return 'Unidad';
+    if (med === 'pack') return 'Pack';
+    if (med === 'pallet' || med === 'pallets') return 'Pallets';
+    return 'Unidad';
+  }
+  columnForCodigo(codigo:any){
+    const det = (this.detalles || []).find(x => x.Codigo == codigo);
+    return det ? this.columnFor(det) : '-';
+  }
+  requestedFor(codigo:any){
+    const det = (this.detalles || []).find(x => x.Codigo == codigo);
+    if (!det) return 0;
+    const col = this.columnFor(det);
+    if (col === 'Unidad') return det.Cantidad || 0;
+    if (col === 'Pack') return det.Cantidad || 0;
+    if (col === 'Pallets') return det.Cantidad || 0;
+    return det.Cantidad || 0;
   }
   loadSectores(depId:any){
     this.sectores = [];

@@ -1,0 +1,57 @@
+﻿[
+    {
+        "ProductoID":  67,
+        "Codigo":  "7798441630018E",
+        "ProductoDescripcion":  "ENV 500 Gs Don Julian TRADICIONAL"
+    },
+    {
+        "ProductoID":  68,
+        "Codigo":  "7798441630049E",
+        "ProductoDescripcion":  "ENV 500 Grs Caricias de Mate TRADICIONAL"
+    },
+    {
+        "ProductoID":  69,
+        "Codigo":  "7798441630032E",
+        "ProductoDescripcion":  "ENV 500 Grs. Caricias de Mate SUAVE"
+    },
+    {
+        "ProductoID":  70,
+        "Codigo":  "7798441630063E",
+        "ProductoDescripcion":  "ENV 500 Grs Mate y Playa Terere"
+    },
+    {
+        "ProductoID":  71,
+        "Codigo":  "7798441630056E",
+        "ProductoDescripcion":  "ENV 500 Grs Mate y Playa TRADICIONAL"
+    },
+    {
+        "ProductoID":  72,
+        "Codigo":  "7798441630025E",
+        "ProductoDescripcion":  "ENV 500 grs Mateite (YM compuesta c/ te verde)"
+    },
+    {
+        "ProductoID":  73,
+        "Codigo":  "7798441630100E",
+        "ProductoDescripcion":  "ENV x1000 Gs Caricias de Mate TRADICIONAL"
+    },
+    {
+        "ProductoID":  74,
+        "Codigo":  "7798441630117E",
+        "ProductoDescripcion":  "ENV x1000 Gs Caricias de Mate SUAVE"
+    },
+    {
+        "ProductoID":  75,
+        "Codigo":  "7798441630087E",
+        "ProductoDescripcion":  "ENV x1000 Gs Mate y Playa TRADICIONAL"
+    },
+    {
+        "ProductoID":  76,
+        "Codigo":  "7798441630124E",
+        "ProductoDescripcion":  "ENV x1000 Gs Mateite (YM compuesta c/ te verde)"
+    },
+    {
+        "ProductoID":  77,
+        "Codigo":  "7798441630094E",
+        "ProductoDescripcion":  "ENV x1000 Gs Don Julian"
+    }
+]
