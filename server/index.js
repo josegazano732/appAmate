@@ -718,7 +718,7 @@ app.get('/api/notas-pedido/:id/movimientos', async (req, res) => {
     const notaId = req.params.id;
     const nota = await db.get('SELECT * FROM notas_pedido WHERE NotaPedidoID = ?', notaId);
     if (!nota) return res.status(404).json({ ok: false, error: 'Nota no encontrada' });
-    // Buscar movimientos por RemitoNumero igual a OrdenCompra o buscando movimiento_detalle con productos de la nota
+    // Buscar movimientos por RemitoNumero igual a OrdenCompra o que contengan productos de la nota
     const detalles = await db.all('SELECT Codigo FROM nota_detalle WHERE NotaPedidoID = ?', notaId);
     const codigos = detalles.map(d => d.Codigo).filter(Boolean);
 
@@ -804,7 +804,7 @@ app.post('/api/movimientos/:id/revert', async (req, res) => {
     await db.exec('COMMIT');
     res.json({ ok: true, MovimientoID: newMovId });
   } catch (err) {
-    try { await db.exec('ROLLBACK'); } catch(e){}
+    try { await db.exec('ROLLBACK'); } catch (e){}
     console.error('Error POST /api/movimientos/:id/revert', err.message || err);
     res.status(500).json({ ok: false, error: err.message || err });
   }
@@ -1344,8 +1344,48 @@ app.post('/api/movimientos', async (req, res) => {
 // Listar movimientos
 app.get('/api/movimientos', async (req, res) => {
   try {
+    // Obtener movimientos
     const items = await db.all('SELECT * FROM movimientos ORDER BY MovimientoID DESC');
-    res.json(items);
+    const out = [];
+    for (const m of items) {
+      // Resolver nombres de depósito/sector
+      const origenDeposito = m.OrigenDepositoID ? await db.get('SELECT Nombre FROM depositos WHERE DepositoID = ?', m.OrigenDepositoID) : null;
+      const origenSector = m.OrigenSectorID ? await db.get('SELECT Nombre FROM sectores WHERE SectorID = ?', m.OrigenSectorID) : null;
+      const destinoDeposito = m.DestinoDepositoID ? await db.get('SELECT Nombre FROM depositos WHERE DepositoID = ?', m.DestinoDepositoID) : null;
+      const destinoSector = m.DestinoSectorID ? await db.get('SELECT Nombre FROM sectores WHERE SectorID = ?', m.DestinoSectorID) : null;
+
+      // Intentar vincular movimiento a una Nota de Pedido por RemitoNumero -> OrdenCompra (lógica mejorada)
+      let nota = null;
+      if (m.RemitoNumero) {
+        const rem = String(m.RemitoNumero || '').trim();
+        // 1) intento por OrdenCompra exacto
+        nota = await db.get('SELECT NotaPedidoID FROM notas_pedido WHERE OrdenCompra = ? LIMIT 1', rem);
+        // 2) si no, intento extraer dígitos y buscar por ID numérico
+        if (!nota) {
+          const digits = (rem.match(/\d+/g) || []).join('');
+          if (digits) {
+            const asId = parseInt(digits, 10);
+            if (!isNaN(asId)) {
+              nota = await db.get('SELECT NotaPedidoID FROM notas_pedido WHERE NotaPedidoID = ? LIMIT 1', asId);
+            }
+          }
+        }
+        // 3) si aún no, intento LIKE sobre OrdenCompra (por si el remito contiene prefijo/sufijo)
+        if (!nota) {
+          nota = await db.get('SELECT NotaPedidoID FROM notas_pedido WHERE OrdenCompra LIKE ? LIMIT 1', `%${rem}%`);
+        }
+      }
+
+      out.push({
+        ...m,
+        OrigenDepositoNombre: origenDeposito ? origenDeposito.Nombre : null,
+        OrigenSectorNombre: origenSector ? origenSector.Nombre : null,
+        DestinoDepositoNombre: destinoDeposito ? destinoDeposito.Nombre : null,
+        DestinoSectorNombre: destinoSector ? destinoSector.Nombre : null,
+        NotaPedidoID: nota ? nota.NotaPedidoID : null
+      });
+    }
+    res.json(out);
   } catch (err) {
     console.error('Error GET /api/movimientos', err.message || err);
     res.status(500).json({ ok: false, error: err.message || err });
@@ -1357,8 +1397,44 @@ app.get('/api/movimientos/:id', async (req, res) => {
   try {
     const id = req.params.id;
     const movimiento = await db.get('SELECT * FROM movimientos WHERE MovimientoID = ?', id);
+    if (!movimiento) return res.status(404).json({ ok: false, error: 'Movimiento no encontrado' });
     const detalles = await db.all('SELECT * FROM movimiento_detalle WHERE MovimientoID = ?', id);
-    res.json({ movimiento, detalles });
+
+    // Resolver nombres de depósito/sector para la cabecera
+    const origenDeposito = movimiento.OrigenDepositoID ? await db.get('SELECT Nombre FROM depositos WHERE DepositoID = ?', movimiento.OrigenDepositoID) : null;
+    const origenSector = movimiento.OrigenSectorID ? await db.get('SELECT Nombre FROM sectores WHERE SectorID = ?', movimiento.OrigenSectorID) : null;
+    const destinoDeposito = movimiento.DestinoDepositoID ? await db.get('SELECT Nombre FROM depositos WHERE DepositoID = ?', movimiento.DestinoDepositoID) : null;
+    const destinoSector = movimiento.DestinoSectorID ? await db.get('SELECT Nombre FROM sectores WHERE SectorID = ?', movimiento.DestinoSectorID) : null;
+
+    // Buscar nota asociada (por RemitoNumero -> OrdenCompra) — lógica mejorada
+    let nota = null;
+    if (movimiento.RemitoNumero) {
+      const rem = String(movimiento.RemitoNumero || '').trim();
+      nota = await db.get('SELECT NotaPedidoID FROM notas_pedido WHERE OrdenCompra = ? LIMIT 1', rem);
+      if (!nota) {
+        const digits = (rem.match(/\d+/g) || []).join('');
+        if (digits) {
+          const asId = parseInt(digits, 10);
+          if (!isNaN(asId)) {
+            nota = await db.get('SELECT NotaPedidoID FROM notas_pedido WHERE NotaPedidoID = ? LIMIT 1', asId);
+          }
+        }
+      }
+      if (!nota) {
+        nota = await db.get('SELECT NotaPedidoID FROM notas_pedido WHERE OrdenCompra LIKE ? LIMIT 1', `%${rem}%`);
+      }
+    }
+
+    const movimientoEnriquecido = {
+      ...movimiento,
+      OrigenDepositoNombre: origenDeposito ? origenDeposito.Nombre : null,
+      OrigenSectorNombre: origenSector ? origenSector.Nombre : null,
+      DestinoDepositoNombre: destinoDeposito ? destinoDeposito.Nombre : null,
+      DestinoSectorNombre: destinoSector ? destinoSector.Nombre : null,
+      NotaPedidoID: nota ? nota.NotaPedidoID : null
+    };
+
+    res.json({ movimiento: movimientoEnriquecido, detalles });
   } catch (err) {
     console.error('Error GET /api/movimientos/:id', err.message || err);
     res.status(500).json({ ok: false, error: err.message || err });

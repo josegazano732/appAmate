@@ -9,15 +9,45 @@ import { ToastService } from '../shared/toast.service';
       <h5>Movimientos</h5>
       <div class="mb-2 text-end"><a class="btn btn-sm btn-primary" routerLink="/inventario/movimientos/new">Nuevo Movimiento</a></div>
       <table class="table table-sm">
-        <thead><tr><th>ID</th><th>Tipo</th><th>Fecha</th><th>Remito</th><th>Origen</th><th>Destino</th><th></th></tr></thead>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Tipo</th>
+            <th>Fecha</th>
+            <th>Remito</th>
+            <th>Nota</th>
+            <th>Origen</th>
+            <th>Destino</th>
+            <th></th>
+          </tr>
+        </thead>
         <tbody>
-            <tr *ngFor="let m of movimientos">
+          <tr *ngFor="let m of movimientos">
             <td>{{m.MovimientoID}}</td>
             <td>{{m.Tipo}}</td>
-            <td>{{m.Fecha}}</td>
+            <td>{{m.Fecha | date:'short'}}</td>
             <td>{{m.RemitoNumero || '-'}}</td>
-            <td>{{m.OrigenDepositoID || '-'}} / {{m.OrigenSectorID || '-'}}</td>
-            <td>{{m.DestinoDepositoID || '-'}} / {{m.DestinoSectorID || '-'}}</td>
+
+            <!-- Nota vinculada -->
+            <td>
+              <ng-container *ngIf="m.NotaPedidoID; else noNota">
+                <a [routerLink]="['/notas', m.NotaPedidoID]">#{{ m.NotaPedidoID }}</a>
+              </ng-container>
+              <ng-template #noNota>-</ng-template>
+            </td>
+
+            <!-- Mostrar nombres (si el backend los provee) o fallback a mapas precargados -->
+            <td>
+              {{ m.OrigenDepositoNombre || nombreDeposito(m.OrigenDepositoID) || '-' }}
+              &nbsp;/&nbsp;
+              {{ m.OrigenSectorNombre || nombreSector(m.OrigenSectorID) || '-' }}
+            </td>
+            <td>
+              {{ m.DestinoDepositoNombre || nombreDeposito(m.DestinoDepositoID) || '-' }}
+              &nbsp;/&nbsp;
+              {{ m.DestinoSectorNombre || nombreSector(m.DestinoSectorID) || '-' }}
+            </td>
+
             <td>
               <button class="btn btn-sm btn-outline-secondary me-1" (click)="showDetalle(m)">Ver</button>
               <button class="btn btn-sm btn-outline-danger" (click)="showRevertModal(m)">Revertir</button>
@@ -28,9 +58,16 @@ import { ToastService } from '../shared/toast.service';
 
       <div *ngIf="selected" class="mt-3">
         <h6>Detalle movimiento {{selected.MovimientoID}}</h6>
-        <table class="table table-sm"><thead><tr><th>Producto</th><th>Unidad</th><th>Pack</th><th>Pallets</th></tr></thead>
+        <table class="table table-sm">
+          <thead><tr><th>Producto</th><th>Unidad</th><th>Pack</th><th>Pallets</th></tr></thead>
           <tbody>
-            <tr *ngFor="let d of detalles"><td>{{d.ProductoID}}</td><td>{{d.Unidad}}</td><td>{{d.Pack}}</td><td>{{d.Pallets}}</td></tr>
+            <tr *ngFor="let d of detalles">
+              <td>{{ nombreProducto(d.ProductoID) }}</td>
+              <td>{{d.Unidad ?? 0}}</td>
+              <td>{{d.Pack ?? 0}}</td>
+              <td>{{d.Pallets ?? d.Pallet ?? 0}}</td>
+            </tr>
+            <tr *ngIf="detalles.length === 0"><td colspan="4" class="text-center">No hay detalles</td></tr>
           </tbody>
         </table>
       </div>
@@ -62,26 +99,63 @@ export class MovimientoListComponent implements OnInit {
   productosMap: Record<number,string> = {};
   depositosMap: Record<number,string> = {};
   sectoresMap: Record<number,string> = {};
-  constructor(private inv: InventarioService, private toast: ToastService) {}
-  ngOnInit(): void { this.load(); }
-  load() { this.inv.listMovimientos().subscribe(r => this.movimientos = r || []); }
-  showDetalle(m:any){ this.selected = m; this.inv.getMovimiento(m.MovimientoID).subscribe((res:any) => {
-      this.detalles = res?.detalles || [];
-      // cargar referencias si hace falta
-      this.inv.listProductos().subscribe(ps => { (ps||[]).forEach((p:any)=> this.productosMap[p.ProductoID]=`${p.Codigo} - ${p.ProductoDescripcion}`); });
-      this.inv.listDepositos().subscribe(ds => { (ds||[]).forEach((d:any)=> this.depositosMap[d.DepositoID]=d.Nombre); });
-      this.inv.listSectores().subscribe(ss => { (ss||[]).forEach((s:any)=> this.sectoresMap[s.SectorID]=s.Nombre); });
-    }, ()=> this.detalles = []);
-  }
-  // Modal-driven revert
+
   revertTarget: any = null;
   revertMotivo: string = '';
+
+  constructor(private inv: InventarioService, private toast: ToastService) {}
+
+  ngOnInit(): void {
+    // precargar mapas para fallback si el backend no devuelve nombres
+    this.inv.listDepositos().subscribe(ds => { (ds||[]).forEach((d:any)=> this.depositosMap[d.DepositoID]=d.Nombre); });
+    this.inv.listSectores().subscribe(ss => { (ss||[]).forEach((s:any)=> this.sectoresMap[s.SectorID]=s.Nombre); });
+    this.inv.listProductos().subscribe(ps => { (ps||[]).forEach((p:any)=> this.productosMap[p.ProductoID]=`${p.Codigo} - ${p.ProductoDescripcion}`); });
+
+    this.load();
+  }
+
+  load() {
+    this.inv.listMovimientos().subscribe(r => {
+      console.log('DEBUG listMovimientos raw response:', r); // temporal para debug
+      this.movimientos = (r || []).map(m => ({
+        ...m,
+        OrigenDepositoNombre: m.OrigenDepositoNombre ?? this.depositosMap[m.OrigenDepositoID],
+        OrigenSectorNombre: m.OrigenSectorNombre ?? this.sectoresMap[m.OrigenSectorID],
+        DestinoDepositoNombre: m.DestinoDepositoNombre ?? this.depositosMap[m.DestinoDepositoID],
+        DestinoSectorNombre: m.DestinoSectorNombre ?? this.sectoresMap[m.DestinoSectorID],
+      }));
+    }, err => {
+      console.error('Error listMovimientos', err);
+    });
+  }
+
+  showDetalle(m:any){
+    this.selected = m;
+    this.inv.getMovimiento(m.MovimientoID).subscribe((res:any) => {
+      this.detalles = res?.detalles || [];
+      // asegurar que tenemos nombres/descripcion de productos si faltan
+      this.detalles.forEach((d:any) => {
+        if (d.ProductoID && !this.productosMap[d.ProductoID]) {
+          this.inv.getProducto(d.ProductoID).subscribe((p:any)=> { if(p) this.productosMap[p.ProductoID]=`${p.Codigo} - ${p.ProductoDescripcion}`; });
+        }
+      });
+    }, ()=> this.detalles = []);
+  }
+
   showRevertModal(m:any){ this.revertTarget = m; this.revertMotivo = ''; }
   hideRevertModal(){ this.revertTarget = null; this.revertMotivo = ''; }
+
   confirmRevert(){
-    const m = this.revertTarget; if (!m) return; const motivo = this.revertMotivo || 'Reversión automática'; this.hideRevertModal();
-    this.inv.revertMovimiento(m.MovimientoID, motivo).subscribe((r:any)=>{ this.toast.success('Reversión creada: ' + r.MovimientoID); this.load(); }, (e:any)=>{ this.toast.error('Error al revertir'); });
+    const m = this.revertTarget; if (!m) return;
+    const motivo = this.revertMotivo || 'Reversión automática'; this.hideRevertModal();
+    this.inv.revertMovimiento(m.MovimientoID, motivo).subscribe((r:any)=>{
+      this.toast.success('Reversión creada: ' + r.MovimientoID);
+      this.load();
+    }, (e:any)=>{
+      this.toast.error('Error al revertir');
+    });
   }
+
   nombreProducto(pid:any){ return this.productosMap[pid] || pid; }
   nombreDeposito(id:any){ return this.depositosMap[id] || id; }
   nombreSector(id:any){ return this.sectoresMap[id] || id; }
