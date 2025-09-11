@@ -16,6 +16,7 @@
 .table{ width:100%; border-collapse:collapse; margin:0; }
 .table thead th{ position:sticky; top:0; background:linear-gradient(180deg,#f8fbff,#ffffff); padding:10px 12px; text-align:left; border-bottom:1px solid #eef3fb; color:#0f2240; font-weight:600 }
 .table tbody td{ padding:12px; border-bottom:1px solid #f6f9ff; color:#16324a }
+.with-saldo td { color: #a80000; background: rgba(168,0,0,0.03); }
 .text-right{ text-align:right; }
 .bold{ font-weight:600; }
 .link{ color:#0b5ed7; text-decoration:none }

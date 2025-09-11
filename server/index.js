@@ -21,6 +21,15 @@ const logFile = path.join(__dirname, 'requests.log');
 
 let db;
 
+// helper para verificar existencia de columna en una tabla (disponible para los handlers)
+async function columnExists(table, column) {
+  try {
+    if (!db) return false;
+    const cols = await db.all(`PRAGMA table_info(${table})`);
+    return (cols || []).some(c => c.name && c.name.toLowerCase() === String(column).toLowerCase());
+  } catch (e) { return false; }
+}
+
 (async () => {
   const dbPath = path.join(__dirname, 'appsis.db');
   db = await open({
@@ -28,13 +37,7 @@ let db;
     driver: sqlite3.Database
   });
 
-  // helper para verificar existencia de columna en una tabla
-  async function columnExists(table, column) {
-    try {
-      const cols = await db.all(`PRAGMA table_info(${table})`);
-      return (cols || []).some(c => c.name && c.name.toLowerCase() === String(column).toLowerCase());
-    } catch (e) { return false; }
-  }
+  // ...existing code...
 
   await db.exec(`CREATE TABLE IF NOT EXISTS clientes (
     ClienteID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1734,8 +1737,9 @@ app.post('/api/movimientos/:id/facturar', async (req, res) => {
     const total = subtotalNetoAfterDesc + totalIva;
 
     const now = new Date().toISOString().slice(0,19).replace('T',' ');
-    const insertVenta = await db.run(`INSERT INTO ventas (ClienteID, NotaPedidoID, MovimientoID, FechaComp, TipoComp, PuntoVenta, NumeroComp, Descuento, Subtotal, SubtotalNeto, SubtotalNoGravado, IvaPercent, TotalIva, Total, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      clienteId, notaId, movimientoId, now, TipoComp || 'FA', PuntoVenta || 0, NumeroComp || '', descuento, subtotal, subtotalNetoAfterDesc, subtotalNoGravado, 0, totalIva, total, now
+    // Insertar venta inicializando Saldo = Total (se actualizará si hay aplicaciones posteriores)
+    const insertVenta = await db.run(`INSERT INTO ventas (ClienteID, NotaPedidoID, MovimientoID, FechaComp, TipoComp, PuntoVenta, NumeroComp, Descuento, Subtotal, SubtotalNeto, SubtotalNoGravado, IvaPercent, TotalIva, Total, Saldo, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      clienteId, notaId, movimientoId, now, TipoComp || 'FA', PuntoVenta || 0, NumeroComp || '', descuento, subtotal, subtotalNetoAfterDesc, subtotalNoGravado, 0, totalIva, total, total, now
     );
 
     const ventaId = insertVenta.lastID;
@@ -1751,7 +1755,7 @@ app.post('/api/movimientos/:id/facturar', async (req, res) => {
       await db.run("UPDATE notas_pedido SET EstadoFacturacion = ?, Estado = ? WHERE NotaPedidoID = ?", 'Facturado', 'Facturado', notaId);
     }
 
-    res.json({ ok: true, VentaID: ventaId, totals: { Subtotal: subtotal, SubtotalNeto: subtotalNetoAfterDesc, TotalIva: totalIva, Total: total } });
+  res.json({ ok: true, VentaID: ventaId, totals: { Subtotal: subtotal, SubtotalNeto: subtotalNetoAfterDesc, TotalIva: totalIva, Total: total } });
   } catch (err) {
     console.error('Error POST /api/movimientos/:id/facturar', err.message || err);
     res.status(500).json({ ok: false, error: err.message || err });
@@ -1840,12 +1844,29 @@ app.get('/api/ventas', async (req, res) => {
 
     const where = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
 
-    const totalRow = await db.get(`SELECT COUNT(*) as cnt FROM ventas v LEFT JOIN clientes c ON c.ClienteID = v.ClienteID ${where}`, params);
+    // soportar filtro para devolver sólo facturas con saldo pendiente
+    const saldoOnly = (req.query.saldoOnly === '1' || req.query.saldoOnly === 'true' || req.query.withSaldo === '1' || req.query.withSaldo === 'true');
+
+    // Asegurar que el campo Saldo exista antes de seleccionarlo (para evitar SQLITE_ERROR)
+    const hasSaldo = await columnExists('ventas', 'Saldo');
+    // Si se pide saldoOnly, añadir la cláusula correspondiente usando IFNULL(Saldo, Total) sólo si la columna existe
+    if (saldoOnly) {
+      if (hasSaldo) {
+        whereClauses.push('IFNULL(v.Saldo, v.Total) > 0');
+      } else {
+        whereClauses.push('v.Total > 0');
+      }
+    }
+
+    const whereFinal = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
+
+    const totalRow = await db.get(`SELECT COUNT(*) as cnt FROM ventas v LEFT JOIN clientes c ON c.ClienteID = v.ClienteID ${whereFinal}`, params);
     const total = totalRow ? totalRow.cnt : 0;
 
-  const sql = `SELECT v.VentaID, v.FechaComp, v.TipoComp, v.NumeroComp, v.PuntoVenta, v.Subtotal, (v.Total - v.Subtotal) as IVA, v.Total, v.NotaPedidoID, c.NombreRazonSocial as ClienteNombre
+    const saldoSelect = hasSaldo ? 'v.Saldo as Saldo,' : 'v.Total as Saldo,';
+    const sql = `SELECT v.VentaID, v.FechaComp, v.TipoComp, v.NumeroComp, v.PuntoVenta, v.Subtotal, (v.Total - v.Subtotal) as IVA, v.Total, ${saldoSelect} v.NotaPedidoID, c.NombreRazonSocial as ClienteNombre
       FROM ventas v LEFT JOIN clientes c ON c.ClienteID = v.ClienteID
-      ${where}
+      ${whereFinal}
       ORDER BY v.VentaID DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
@@ -1853,6 +1874,183 @@ app.get('/api/ventas', async (req, res) => {
     res.json({ items, total, limit, offset });
   } catch (err) {
     console.error('Error GET /api/ventas', err && (err.stack || err.message || err));
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// --- Migraciones para Recibos: tablas y columna Saldo en ventas ---
+// Crear tablas relacionadas con recibos si no existen. Se ejecuta en caliente; usar IF NOT EXISTS.
+try {
+  await db.exec(`CREATE TABLE IF NOT EXISTS recibos (
+    ReciboID INTEGER PRIMARY KEY AUTOINCREMENT,
+    Fecha TEXT,
+    ClienteID INTEGER,
+    Total REAL DEFAULT 0,
+    Observaciones TEXT,
+    CreatedAt TEXT
+  );`);
+
+  await db.exec(`CREATE TABLE IF NOT EXISTS recibo_pagos (
+    ReciboPagoID INTEGER PRIMARY KEY AUTOINCREMENT,
+    ReciboID INTEGER,
+    TipoPago TEXT,
+    Monto REAL DEFAULT 0,
+    Datos TEXT,
+    FOREIGN KEY (ReciboID) REFERENCES recibos(ReciboID)
+  );`);
+
+  await db.exec(`CREATE TABLE IF NOT EXISTS recibo_ventas (
+    ReciboVentaID INTEGER PRIMARY KEY AUTOINCREMENT,
+    ReciboID INTEGER,
+    VentaID INTEGER,
+    ImporteAplicado REAL DEFAULT 0,
+    FOREIGN KEY (ReciboID) REFERENCES recibos(ReciboID),
+    FOREIGN KEY (VentaID) REFERENCES ventas(VentaID)
+  );`);
+
+  // Asegurar columna Saldo en ventas. Si falta, agregar y backfill con Total - SUM(aplicado)
+  const vcols = await db.all("PRAGMA table_info('ventas')");
+  const vexisting = new Set((vcols || []).map(c => c.name));
+  if (!vexisting.has('Saldo')) {
+    try {
+      await db.exec("ALTER TABLE ventas ADD COLUMN Saldo REAL DEFAULT 0;");
+      // Backfill: Si no hay aplicaciones, Saldo = Total
+      await db.exec(`UPDATE ventas SET Saldo = Total - IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas WHERE recibo_ventas.VentaID = ventas.VentaID), 0)`);
+      console.log('DB migration: columna Saldo agregada a ventas y backfilled');
+    } catch (err) {
+      console.warn('DB migration recibos: no se pudo agregar columna Saldo', err && err.message);
+    }
+  }
+} catch (err) {
+  console.warn('DB migration recibos: error al crear tablas/columnas', err && err.message);
+}
+
+// Crear un Recibo: body { Fecha?, ClienteID?, ventas: [{VentaID, ImporteAplicado}], pagos: [{TipoPago, Monto, Datos}], Observaciones }
+app.post('/api/recibos', async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const ventasArr = Array.isArray(payload.ventas) ? payload.ventas : [];
+    const pagosArr = Array.isArray(payload.pagos) ? payload.pagos : [];
+    if (!ventasArr.length) return res.status(400).json({ ok: false, error: 'Se requiere al menos una factura en ventas' });
+
+    // Validar importes
+    for (const v of ventasArr) {
+      if (!v.VentaID || typeof v.ImporteAplicado !== 'number') return res.status(400).json({ ok: false, error: 'Cada item de ventas debe tener VentaID y ImporteAplicado (number)' });
+      if (v.ImporteAplicado <= 0) return res.status(400).json({ ok: false, error: 'ImporteAplicado debe ser mayor que 0' });
+    }
+
+    // Calcular totales
+    const totalAplicado = ventasArr.reduce((s, i) => s + Number(i.ImporteAplicado || 0), 0);
+    const totalPagos = pagosArr.reduce((s, p) => s + Number(p.Monto || 0), 0);
+
+    // Validaciones adicionales: verificar Saldo disponible en cada factura
+    for (const v of ventasArr) {
+      const ventaRow = await db.get('SELECT VentaID, Total, Saldo FROM ventas WHERE VentaID = ?', v.VentaID);
+      if (!ventaRow) return res.status(400).json({ ok: false, error: `VentaID ${v.VentaID} no encontrada` });
+      const saldoActual = Number(ventaRow.Saldo || 0);
+      if (Number(v.ImporteAplicado || 0) > saldoActual) return res.status(400).json({ ok: false, error: `Importe aplicado (${v.ImporteAplicado}) excede Saldo disponible (${saldoActual}) para VentaID ${v.VentaID}` });
+    }
+
+    // Validar que los pagos cubran al menos el monto aplicado
+    if (totalPagos < totalAplicado) return res.status(400).json({ ok: false, error: `Total de pagos (${totalPagos}) es menor que el total aplicado a facturas (${totalAplicado})` });
+
+    // Empezar transacción
+    await db.exec('BEGIN TRANSACTION;');
+    try {
+      const now = new Date().toISOString().slice(0,19).replace('T',' ');
+      const fecha = payload.Fecha || now;
+      const clienteId = payload.ClienteID || null;
+      const observ = payload.Observaciones || '';
+
+      const ins = await db.run('INSERT INTO recibos (Fecha, ClienteID, Total, Observaciones, CreatedAt) VALUES (?, ?, ?, ?, ?)', fecha, clienteId, totalPagos || totalAplicado, observ, now);
+      const reciboId = ins.lastID;
+
+      // Insertar pagos
+      const stmtPago = await db.prepare('INSERT INTO recibo_pagos (ReciboID, TipoPago, Monto, Datos) VALUES (?, ?, ?, ?)');
+      try {
+        for (const p of pagosArr) {
+          const tipo = p.TipoPago || p.tipo || 'Desconocido';
+          const monto = Number(p.Monto || 0);
+          const datos = p.Datos ? JSON.stringify(p.Datos) : (p.DatosText || null);
+          await stmtPago.run(reciboId, tipo, monto, datos);
+        }
+      } finally { await stmtPago.finalize(); }
+
+      // Aplicar importes a facturas y actualizar ventas.Saldo
+      const stmtAplic = await db.prepare('INSERT INTO recibo_ventas (ReciboID, VentaID, ImporteAplicado) VALUES (?, ?, ?)');
+      try {
+        for (const a of ventasArr) {
+          const ventaId = Number(a.VentaID);
+          const imp = Number(a.ImporteAplicado || 0);
+          await stmtAplic.run(reciboId, ventaId, imp);
+          // Restar del Saldo actual, asegurar que no quede negativo y manejar Saldo nulo usando Total
+          await db.run('UPDATE ventas SET Saldo = MAX(0, IFNULL(Saldo, Total) - ?) WHERE VentaID = ?', imp, ventaId);
+        }
+      } finally { await stmtAplic.finalize(); }
+
+      await db.exec('COMMIT;');
+      res.json({ ok: true, ReciboID: reciboId });
+    } catch (innerErr) {
+      await db.exec('ROLLBACK;');
+      console.error('Error creando recibo - rollback', innerErr && (innerErr.stack || innerErr.message || innerErr));
+      res.status(500).json({ ok: false, error: innerErr.message || innerErr });
+    }
+  } catch (err) {
+    console.error('Error POST /api/recibos', err && (err.stack || err.message || err));
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Obtener recibo con pagos y aplicaciones
+app.get('/api/recibos/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ ok: false, error: 'ID inválido' });
+    const recibo = await db.get('SELECT * FROM recibos WHERE ReciboID = ?', id);
+    if (!recibo) return res.status(404).json({ ok: false, error: 'Recibo no encontrado' });
+    const pagos = await db.all('SELECT * FROM recibo_pagos WHERE ReciboID = ? ORDER BY ReciboPagoID ASC', id);
+    const aplicaciones = await db.all('SELECT * FROM recibo_ventas WHERE ReciboID = ? ORDER BY ReciboVentaID ASC', id);
+    res.json({ ...recibo, pagos, aplicaciones });
+  } catch (err) {
+    console.error('Error GET /api/recibos/:id', err && (err.stack || err.message || err));
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Listado de recibos (paginado, filtros: cliente, fechaDesde, fechaHasta, q)
+app.get('/api/recibos', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    const cliente = req.query.cliente ? Number(req.query.cliente) : null;
+    const fechaDesde = req.query.fechaDesde || null;
+    const fechaHasta = req.query.fechaHasta || null;
+    const q = req.query.q ? `%${req.query.q}%` : null;
+
+    let whereClauses = [];
+    const params = [];
+    if (cliente) whereClauses.push('r.ClienteID = ?'), params.push(cliente);
+    if (fechaDesde) whereClauses.push('date(r.Fecha) >= date(?)'), params.push(fechaDesde);
+    if (fechaHasta) whereClauses.push('date(r.Fecha) <= date(?)'), params.push(fechaHasta);
+    if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q);
+
+    const where = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
+
+    const totalRow = await db.get(`SELECT COUNT(*) as cnt FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID ${where}`, params);
+    const total = totalRow ? totalRow.cnt : 0;
+
+    const sql = `SELECT r.ReciboID, r.Fecha, r.ClienteID, r.Total, r.Observaciones, r.CreatedAt, c.NombreRazonSocial as ClienteNombre,
+      IFNULL((SELECT SUM(Monto) FROM recibo_pagos rp WHERE rp.ReciboID = r.ReciboID), 0) as TotalPagos,
+      IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas rv WHERE rv.ReciboID = r.ReciboID), 0) as TotalAplicado
+      FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID
+      ${where}
+      ORDER BY r.ReciboID DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+
+    const items = await db.all(sql, params);
+    res.json({ items, total, limit, offset });
+  } catch (err) {
+    console.error('Error GET /api/recibos', err && (err.stack || err.message || err));
     res.status(500).json({ ok: false, error: err.message || err });
   }
 });

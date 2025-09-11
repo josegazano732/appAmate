@@ -1,0 +1,65 @@
+<div class="card p-3">
+  <h4>Nuevo Recibo de Cobranza</h4>
+  <div>
+  <label>Fecha: <input type="datetime-local" [(ngModel)]="fecha"></label>
+  <label style="margin-left:1rem">ClienteID: <input type="number" [(ngModel)]="clienteId"></label>
+  <label style="margin-left:1rem">Buscar Facturas: <input [(ngModel)]="ventasQ" (keyup.enter)="loadVentas()"></label>
+  <div>
+    <label><input #selall type="checkbox" (change)="toggleSelectAll(selall.checked)"> Seleccionar todas las facturas visibles</label>
+  </div>
+  <div *ngIf="successMessage" class="alert alert-success" style="margin-top:8px">{{successMessage}}</div>
+
+  <h5 style="margin-top:1rem">Facturas</h5>
+  <div style="margin-bottom:8px">
+  <label><input type="checkbox" (change)="toggleSelectAll(selall.checked)"> Seleccionar todas las facturas visibles</label>
+  </div>
+  <table class="table table-sm">
+    <thead><tr><th></th><th>ID</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Saldo</th><th>Aplicar</th></tr></thead>
+    <tbody>
+      <tr *ngFor="let v of ventas">
+        <td><input #chk type="checkbox" (change)="toggleSelect(v, chk.checked)"></td>
+        <td>{{v.VentaID}}</td>
+        <td>{{v.FechaComp}}</td>
+        <td>{{v.ClienteNombre}}</td>
+        <td>{{v.Total}}</td>
+        <td>{{v.Saldo || v.Total}}</td>
+        <td>
+          <input *ngIf="isSelected(v.VentaID)" #imp type="number" step="0.01" (input)="updateImporte(v.VentaID, imp.value)" [value]="getSelectedImporte(v.VentaID)">
+          <div *ngIf="selectedMap[v.VentaID] && selectedMap[v.VentaID].error" class="text-danger small">{{selectedMap[v.VentaID].error}}</div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="card p-2" style="margin-top:8px">
+    <strong>Resumen:</strong>
+    <div>Total aplicado: {{getTotalAplicado() | number:'1.2-2'}}</div>
+    <div>Total pagos: {{getTotalPagos() | number:'1.2-2'}}</div>
+    <div>Diferencia (Pagos - Aplicado): {{getDiferencia() | number:'1.2-2'}}</div>
+  <div *ngIf="!canSubmit" class="text-danger">No se puede enviar: los pagos no cubren el total aplicado o no hay facturas seleccionadas.</div>
+  </div>
+
+  <h5 style="margin-top:1rem">Pagos</h5>
+  <div *ngFor="let p of pagos; let i = index" style="display:flex; gap:8px; align-items:center; margin-bottom:4px;">
+    <select [(ngModel)]="p.TipoPago">
+      <option>Efectivo</option>
+      <option>Transferencia</option>
+      <option>Cheques</option>
+      <option>Echeq Electronico</option>
+      <option>Certificado de Retencion</option>
+    </select>
+    <input type="number" step="0.01" [(ngModel)]="p.Monto">
+    <input placeholder="Datos" [(ngModel)]="p.Datos">
+    <button (click)="removePago(i)" class="btn btn-sm btn-danger">Quitar</button>
+  </div>
+  <button (click)="addPago()" class="btn btn-sm btn-outline-primary">Agregar Pago</button>
+
+  <div style="margin-top:1rem">
+    <label>Observaciones</label>
+    <textarea [(ngModel)]="observaciones" rows="3" style="width:100%"></textarea>
+  </div>
+
+  <div style="margin-top:1rem">
+    <button (click)="submit()" class="btn btn-primary">Guardar Recibo</button>
+  </div>
+</div>

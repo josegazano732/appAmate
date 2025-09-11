@@ -1,0 +1,24 @@
+<div class="card p-3">
+  <h4>Listado de Recibos</h4>
+  <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px">
+    <input placeholder="buscar" [(ngModel)]="q" (input)="onSearchChange()">
+    <label>Desde <input type="date" [(ngModel)]="fechaDesde" (change)="onSearchChange()"></label>
+    <label>Hasta <input type="date" [(ngModel)]="fechaHasta" (change)="onSearchChange()"></label>
+    <a class="btn btn-sm btn-outline-primary" routerLink="/inventario/recibos/new">Nuevo Recibo</a>
+  </div>
+
+  <table class="table table-sm">
+    <thead><tr><th>ID</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>TotalPagos</th><th>TotalAplicado</th><th></th></tr></thead>
+    <tbody>
+      <tr *ngFor="let r of items">
+        <td>{{r.ReciboID}}</td>
+        <td>{{r.Fecha}}</td>
+        <td>{{r.ClienteNombre}}</td>
+        <td>{{r.Total}}</td>
+        <td>{{r.TotalPagos}}</td>
+        <td>{{r.TotalAplicado}}</td>
+        <td><a class="btn btn-sm btn-link" [routerLink]="['/inventario/recibos', r.ReciboID]">Ver</a></td>
+      </tr>
+    </tbody>
+  </table>
+</div>

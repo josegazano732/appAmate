@@ -4,6 +4,7 @@
     <div class="actions">
       <button class="btn primary" (click)="clearFilters()">Limpiar</button>
       <button class="btn" (click)="load()">Buscar</button>
+  <a class="btn btn-outline-primary" routerLink="/inventario/recibos/new" style="margin-left:8px">Nuevo Recibo</a>
     </div>
   </header>
 
@@ -54,7 +55,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let v of items">
+        <tr *ngFor="let v of items" [class.with-saldo]="(v.Saldo || v.Total) > 0">
           <td>{{v.displayFecha}}</td>
           <td>{{v.TipoComp}}</td>
           <td><span class="badge">{{v.PuntoVenta}}</span></td>

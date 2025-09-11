@@ -11,6 +11,8 @@ import { MovimientoListComponent } from './movimiento-list.component';
 import { ProductosListComponent } from './productos-list.component';
 import { VentaDetailComponent } from './venta-detail.component';
 import { VentasListComponent } from './ventas-list.component';
+import { ReciboFormComponent } from './recibo-form.component';
+import { RecibosListComponent } from './recibos-list.component';
 
 const routes: Routes = [
   { path: '', component: StockListComponent },
@@ -23,10 +25,13 @@ const routes: Routes = [
   { path: 'movimientos/new', component: MovimientoFormComponent }
   ,{ path: 'ventas/:id', component: VentaDetailComponent }
   ,{ path: 'ventas', component: VentasListComponent }
+  ,{ path: 'recibos/new', component: ReciboFormComponent }
+  ,{ path: 'recibos/:id', component: ReciboFormComponent }
+  ,{ path: 'recibos', component: RecibosListComponent }
 ];
 
 @NgModule({
-  declarations: [ProductoFormComponent, ProductoVariantesComponent, DepositoSectorFormComponent, StockListComponent, MovimientoFormComponent, ProductosListComponent, MovimientoListComponent, VentaDetailComponent, VentasListComponent],
+  declarations: [ProductoFormComponent, ProductoVariantesComponent, DepositoSectorFormComponent, StockListComponent, MovimientoFormComponent, ProductosListComponent, MovimientoListComponent, VentaDetailComponent, VentasListComponent, ReciboFormComponent, RecibosListComponent],
   imports: [CommonModule, FormsModule, RouterModule.forChild(routes)]
 })
 export class InventarioModule {}

@@ -37,7 +37,8 @@ async function run() {
     let totalIva = 0;
     let totalNoGravado = 0;
 
-    const ventaRes = await db.run(`INSERT INTO ventas (ClienteID, NotaPedidoID, MovimientoID, FechaComp, TipoComp, PuntoVenta, NumeroComp, Descuento, Subtotal, SubtotalNeto, SubtotalNoGravado, IvaPercent, TotalIva, Total, CreatedAt) VALUES (?, ?, ?, datetime('now'), ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, datetime('now'))`,
+    // Insertar venta inicializando Saldo = Total (se actualizará tras cálculo)
+    const ventaRes = await db.run(`INSERT INTO ventas (ClienteID, NotaPedidoID, MovimientoID, FechaComp, TipoComp, PuntoVenta, NumeroComp, Descuento, Subtotal, SubtotalNeto, SubtotalNoGravado, IvaPercent, TotalIva, Total, Saldo, CreatedAt) VALUES (?, ?, ?, datetime('now'), ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, datetime('now'))`,
       clienteId, mov.NotaPedidoID || null, movimientoId, body.TipoComp, body.PuntoVenta, body.NumeroComp, body.Descuento || 0);
     const ventaId = ventaRes.lastID;
 
@@ -71,7 +72,7 @@ async function run() {
     }
 
     // Actualizar totales en ventas
-    await db.run('UPDATE ventas SET Subtotal = ?, SubtotalNeto = ?, SubtotalNoGravado = ?, TotalIva = ?, Total = ? WHERE VentaID = ?', subtotal, subtotalNeto, totalNoGravado, totalIva, subtotal, ventaId);
+  await db.run('UPDATE ventas SET Subtotal = ?, SubtotalNeto = ?, SubtotalNoGravado = ?, TotalIva = ?, Total = ?, Saldo = ? WHERE VentaID = ?', subtotal, subtotalNeto, totalNoGravado, totalIva, subtotal, subtotal, ventaId);
 
     // Marcar nota facturada si existe
     if (mov.NotaPedidoID) {

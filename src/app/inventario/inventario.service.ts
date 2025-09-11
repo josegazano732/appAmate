@@ -40,6 +40,10 @@ export class InventarioService {
   getVenta(id:any) { return this.http.get<any>(`${this.api}/ventas/${id}`); }
   // Listado de ventas (paginado)
   listVentas(params?: any) { return this.http.get<any>(`${this.api}/ventas`, { params: params || {} as any }); }
+  // Recibos
+  createRecibo(payload: any) { return this.http.post<any>(`${this.api}/recibos`, payload); }
+  getRecibo(id:any) { return this.http.get<any>(`${this.api}/recibos/${id}`); }
+  listRecibos(params?: any) { return this.http.get<any>(`${this.api}/recibos`, { params: params || {} as any }); }
   // Variantes
   listVariantes(productoId:any){ return this.http.get<any[]>(`${this.api}/productos/${productoId}/variantes`); }
   createVariante(productoId:any, v:any){ return this.http.post(`${this.api}/productos/${productoId}/variantes`, v); }
