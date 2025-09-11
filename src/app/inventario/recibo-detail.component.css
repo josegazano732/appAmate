@@ -1,0 +1,22 @@
+.recibo-wrapper { display:flex; flex-direction:column; gap:1rem; }
+.toolbar { display:flex; gap:.5rem; }
+.header { display:flex; justify-content:space-between; align-items:flex-start; padding:1rem; }
+.header h3 { margin:0 0 .25rem 0; font-weight:600; }
+.meta { font-size:.85rem; color:#555; }
+.totales-resumen { display:flex; gap:1.25rem; }
+.totales-resumen .lbl { display:block; font-size:.65rem; text-transform:uppercase; letter-spacing:.5px; color:#666; }
+.totales-resumen .val { font-weight:600; font-variant-numeric:tabular-nums; }
+.totales-resumen .val.neg { color:#b60000; }
+.grid-two { display:grid; gap:1rem; grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); }
+.card { background:#fff; border:1px solid #e2e5ea; border-radius:8px; padding:1rem; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+.card h5, .card h6 { margin:0 0 .75rem 0; font-weight:600; }
+.table-border { border:1px solid #dcdfe3; }
+.table-border thead { background:#f5f7fa; }
+.table-border td, .table-border th { padding:.4rem .5rem; vertical-align:middle; }
+.mono { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size:.75rem; }
+.aplicado { font-weight:600; color:#1f5c2e; }
+.observaciones { background:#f8f9fa; padding:.75rem; border-radius:4px; white-space:pre-wrap; font-size:.85rem; }
+.audit-grid { display:grid; gap:.5rem; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); font-size:.75rem; }
+.audit-grid .lbl { display:block; text-transform:uppercase; font-size:.55rem; letter-spacing:.5px; color:#666; }
+.audit-grid .val { font-weight:500; }
+@media print { .no-print { display:none !important; } body { background:#fff; } .card { box-shadow:none; border:none; padding:.5rem 0; } .toolbar { display:none; } }

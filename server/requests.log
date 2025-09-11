@@ -461,3 +461,4 @@
 2025-09-11T14:11:39.215Z GET /api/clientes params={"limit":"10","offset":"0"}
 2025-09-11T14:35:50.038Z GET /api/clientes params={"limit":"10","offset":"0"}
 2025-09-11T14:36:16.477Z GET /api/clientes params={"limit":"10","offset":"0"}
+2025-09-11T14:53:53.066Z GET /api/clientes params={"limit":"10","offset":"0"}

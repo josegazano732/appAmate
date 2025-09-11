@@ -13,6 +13,7 @@ import { VentaDetailComponent } from './venta-detail.component';
 import { VentasListComponent } from './ventas-list.component';
 import { ReciboFormComponent } from './recibo-form.component';
 import { RecibosListComponent } from './recibos-list.component';
+import { ReciboDetailComponent } from './recibo-detail.component';
 
 const routes: Routes = [
   { path: '', component: StockListComponent },
@@ -22,16 +23,16 @@ const routes: Routes = [
   { path: 'productos/:id/variantes', component: ProductoVariantesComponent },
   { path: 'depositos', component: DepositoSectorFormComponent },
   { path: 'movimientos', component: MovimientoListComponent },
-  { path: 'movimientos/new', component: MovimientoFormComponent }
-  ,{ path: 'ventas/:id', component: VentaDetailComponent }
-  ,{ path: 'ventas', component: VentasListComponent }
-  ,{ path: 'recibos/new', component: ReciboFormComponent }
-  ,{ path: 'recibos/:id', component: ReciboFormComponent }
-  ,{ path: 'recibos', component: RecibosListComponent }
+  { path: 'movimientos/new', component: MovimientoFormComponent },
+  { path: 'ventas/:id', component: VentaDetailComponent },
+  { path: 'ventas', component: VentasListComponent },
+  { path: 'recibos/new', component: ReciboFormComponent },
+  { path: 'recibos/:id', component: ReciboDetailComponent },
+  { path: 'recibos', component: RecibosListComponent }
 ];
 
 @NgModule({
-  declarations: [ProductoFormComponent, ProductoVariantesComponent, DepositoSectorFormComponent, StockListComponent, MovimientoFormComponent, ProductosListComponent, MovimientoListComponent, VentaDetailComponent, VentasListComponent, ReciboFormComponent, RecibosListComponent],
+  declarations: [ProductoFormComponent, ProductoVariantesComponent, DepositoSectorFormComponent, StockListComponent, MovimientoFormComponent, ProductosListComponent, MovimientoListComponent, VentaDetailComponent, VentasListComponent, ReciboFormComponent, RecibosListComponent, ReciboDetailComponent],
   imports: [CommonModule, FormsModule, RouterModule.forChild(routes)]
 })
 export class InventarioModule {}

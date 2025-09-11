@@ -3,11 +3,20 @@ import { InventarioService } from './inventario.service';
 
 @Component({
   selector: 'app-recibo-form',
-  templateUrl: './recibo-form.component.html'
+  templateUrl: './recibo-form.component.html',
+  styleUrls: ['./recibo-form.component.css']
 })
 export class ReciboFormComponent {
   ventas: any[] = [];
   ventasQ = '';
+  sortField: string = 'FechaComp';
+  sortDir: 'asc' | 'desc' = 'desc';
+  minTotal: number | null = null;
+  maxTotal: number | null = null;
+  page = 1;
+  pageSize = 25;
+  get totalFiltered(){ return this.ventasFiltered.length; }
+
   selected: { VentaID:number, ImporteAplicado:number }[] = [];
   selectedMap: Record<number, { ImporteAplicado:number, error?:string }> = {};
   pagos: any[] = [];
@@ -17,9 +26,40 @@ export class ReciboFormComponent {
   errorMessage: string | null = null;
   successMessage: string | null = null;
 
-  constructor(private svc: InventarioService) {
-    this.loadVentas();
+  constructor(private svc: InventarioService) { this.loadVentas(); }
+
+  get ventasFiltered(){
+    return this.ventas.filter(v=>{
+      const total = Number(v.Total || 0);
+      if(this.minTotal!=null && total < this.minTotal) return false;
+      if(this.maxTotal!=null && total > this.maxTotal) return false;
+      return true;
+    });
   }
+
+  get ventasSorted(){
+    const arr = [...this.ventasFiltered];
+    const f = this.sortField;
+    arr.sort((a:any,b:any)=>{ const av=a[f]; const bv=b[f]; if(av==null && bv!=null) return -1; if(av!=null && bv==null) return 1; if(av==null && bv==null) return 0; if(av<bv) return this.sortDir==='asc'? -1:1; if(av>bv) return this.sortDir==='asc'?1:-1; return 0; });
+    return arr;
+  }
+
+  get ventasPage(){
+    const start = (this.page-1)*this.pageSize;
+    return this.ventasSorted.slice(start, start + this.pageSize);
+  }
+
+  get totalPages(){ return Math.max(1, Math.ceil(this.totalFiltered / this.pageSize)); }
+
+  setSort(field:string){
+    if(this.sortField===field){ this.sortDir = this.sortDir==='asc'?'desc':'asc'; }
+    else { this.sortField = field; this.sortDir='asc'; }
+  }
+
+  setPage(p:number){ if(p<1||p>this.totalPages) return; this.page = p; }
+  nextPage(){ this.setPage(this.page+1); }
+  prevPage(){ this.setPage(this.page-1); }
+  onFiltersChange(){ this.page = 1; }
 
   async loadVentas() {
     try {
@@ -108,9 +148,10 @@ export class ReciboFormComponent {
   }
 
   async submit() {
-  this.errorMessage = null;
-  this.successMessage = null;
-  if (!this.selected.length) { this.errorMessage = 'Seleccione al menos una factura'; return; }
+    this.errorMessage = null;
+    this.successMessage = null;
+    if (!this.selected.length) { this.errorMessage = 'Seleccione al menos una factura'; return; }
+    if (!this.canSubmit) { this.errorMessage = 'Los pagos no cubren el total aplicado'; return; }
     const payload = {
       Fecha: this.fecha || undefined,
       ClienteID: this.clienteId || undefined,
@@ -142,4 +183,7 @@ export class ReciboFormComponent {
       }
     }
   }
+
+  resetForm(){
+    this.fecha = null; this.clienteId = null; this.selected = []; this.selectedMap = {}; this.pagos=[]; this.observaciones=''; this.errorMessage=null; this.successMessage=null; }
 }
