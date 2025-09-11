@@ -9,6 +9,7 @@ import { InventarioService } from './inventario.service';
 export class ReciboFormComponent {
   ventas: any[] = [];
   ventasQ = '';
+  filtersCollapsed = false;
   sortField: string = 'FechaComp';
   sortDir: 'asc' | 'desc' = 'desc';
   minTotal: number | null = null;

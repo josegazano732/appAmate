@@ -1,15 +1,30 @@
 <div class="recibo-form-wrapper">
-  <div class="section-card">
-    <h4>Nuevo Recibo de Cobranza</h4>
-    <div class="inline-fields">
+  <div class="section-card header-bar">
+    <div>
+      <h4>Nuevo Recibo de Cobranza</h4>
+      <div class="subtitle">Registra pagos y aplicación a facturas pendientes.</div>
+    </div>
+    <div class="quick-summary">
+      <div><span class="lbl">Aplicado</span><span class="val">{{getTotalAplicado() | number:'1.2-2'}}</span></div>
+      <div><span class="lbl">Pagos</span><span class="val">{{getTotalPagos() | number:'1.2-2'}}</span></div>
+      <div><span class="lbl" [title]="'Pagos - Aplicado'">Diferencia</span><span class="val" [class.neg]="getDiferencia()<0" [class.pos]="getDiferencia()>0">{{getDiferencia() | number:'1.2-2'}}</span></div>
+    </div>
+  </div>
+
+  <div class="section-card filters" [class.collapsed]="filtersCollapsed">
+  <div class="filters-header" (click)="filtersCollapsed=!filtersCollapsed" role="button" tabindex="0" [attr.aria-expanded]="!filtersCollapsed">
+      <strong>Filtros de Facturas</strong>
+      <span class="caret" [class.rot]="!filtersCollapsed">▾</span>
+    </div>
+    <div class="inline-fields" *ngIf="!filtersCollapsed">
       <label>Fecha
         <input type="datetime-local" [(ngModel)]="fecha" aria-label="Fecha del recibo">
       </label>
       <label>Cliente ID
-        <input type="number" [(ngModel)]="clienteId" aria-label="Identificador de cliente">
+        <input type="number" [(ngModel)]="clienteId" aria-label="Identificador de cliente" placeholder="Ej: 12">
       </label>
       <label>Buscar Facturas
-        <input [(ngModel)]="ventasQ" (keyup.enter)="loadVentas()" placeholder="Texto o nro" aria-label="Buscar facturas">
+        <input [(ngModel)]="ventasQ" (keyup.enter)="loadVentas()" placeholder="Texto, número o cliente" aria-label="Buscar facturas">
       </label>
       <label>Mín Total
         <input type="number" step="0.01" [(ngModel)]="minTotal" (input)="onFiltersChange()" aria-label="Total mínimo">
@@ -18,16 +33,17 @@
         <input type="number" step="0.01" [(ngModel)]="maxTotal" (input)="onFiltersChange()" aria-label="Total máximo">
       </label>
       <label style="align-self:flex-end; padding-top:.95rem;">
-        <input #selall type="checkbox" (change)="toggleSelectAll(selall.checked)" aria-label="Seleccionar todas las facturas"> Seleccionar todas
+        <input #selall type="checkbox" (change)="toggleSelectAll(selall.checked)" aria-label="Seleccionar todas las facturas"> Todas visibles
       </label>
       <button class="btn btn-sm btn-outline-primary" style="height:34px; align-self:flex-end;" (click)="loadVentas()">Actualizar</button>
     </div>
-    <div class="status-msg" *ngIf="successMessage" class="alert alert-success">{{successMessage}}</div>
-    <div class="status-msg text-danger" *ngIf="errorMessage">{{errorMessage}}</div>
+    <div class="status-msg success" *ngIf="successMessage">{{successMessage}}</div>
+    <div class="status-msg error" *ngIf="errorMessage">{{errorMessage}}</div>
   </div>
 
   <div class="section-card">
-    <h5>Facturas Pendientes</h5>
+  <h5>Facturas Pendientes</h5>
+  <div class="help small">Marque las facturas y defina el importe a aplicar. Puede aplicar menos que el saldo para un pago parcial.</div>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; font-size:.75rem;">
       <div>Mostrando {{ventasPage.length}} de {{totalFiltered}} (página {{page}} / {{totalPages}})</div>
       <div style="display:flex; gap:.5rem; align-items:center;">
@@ -52,16 +68,19 @@
           <th (click)="setSort('Saldo')" style="cursor:pointer">Saldo <span *ngIf="sortField==='Saldo'">{{sortDir==='asc'?'▲':'▼'}}</span></th>
           <th>Aplicar</th></tr></thead>
         <tbody>
-          <tr *ngFor="let v of ventasPage">
+          <tr *ngFor="let v of ventasPage" [class.selected-row]="isSelected(v.VentaID)" [class.with-saldo]="(v.Saldo||v.Total)>0">
             <td><input #chk type="checkbox" (change)="toggleSelect(v, chk.checked)" [checked]="isSelected(v.VentaID)" [attr.aria-label]="'Seleccionar factura ' + v.VentaID"></td>
-            <td>{{v.VentaID}}</td>
+            <td><span class="mono">{{v.VentaID}}</span></td>
             <td>{{v.FechaComp}}</td>
-            <td>{{v.ClienteNombre}}</td>
+            <td>{{v.ClienteNombre || '—'}}</td>
             <td>{{v.Total | number:'1.2-2'}}</td>
-            <td>{{(v.Saldo || v.Total) | number:'1.2-2'}}</td>
-            <td style="min-width:120px">
+            <td><span class="saldo-pill" [class.zero]="(v.Saldo||v.Total)==0">{{(v.Saldo || v.Total) | number:'1.2-2'}}</span></td>
+            <td style="min-width:140px">
               <ng-container *ngIf="isSelected(v.VentaID); else noSel">
-                <input #imp type="number" step="0.01" (input)="updateImporte(v.VentaID, imp.value)" [value]="getSelectedImporte(v.VentaID)" class="form-control form-control-sm" [attr.aria-label]="'Importe a aplicar factura ' + v.VentaID">
+                <div class="aplicar-box">
+                  <input #imp type="number" step="0.01" (input)="updateImporte(v.VentaID, imp.value)" [value]="getSelectedImporte(v.VentaID)" class="form-control form-control-sm" [attr.aria-label]="'Importe a aplicar factura ' + v.VentaID">
+                  <button type="button" class="mini-btn" (click)="updateImporte(v.VentaID, (v.Saldo||v.Total))" title="Aplicar saldo completo">Max</button>
+                </div>
                 <div *ngIf="selectedMap[v.VentaID] && selectedMap[v.VentaID].error" class="badge-error">{{selectedMap[v.VentaID].error}}</div>
               </ng-container>
               <ng-template #noSel><span class="text-muted small">—</span></ng-template>

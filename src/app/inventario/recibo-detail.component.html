@@ -3,12 +3,13 @@
     <a routerLink="/inventario/recibos" class="btn btn-sm btn-outline-secondary">Volver</a>
     <button class="btn btn-sm btn-outline-primary" (click)="print()">Imprimir</button>
     <button class="btn btn-sm btn-outline-success" (click)="exportJSON()">Exportar JSON</button>
+  <a class="btn btn-sm btn-outline-danger" *ngIf="recibo" [href]="'http://localhost:3000/api/recibos/' + recibo.ReciboID + '/export/pdf'" target="_blank">PDF</a>
   </div>
 
   <div class="header card">
     <div>
       <h3>Recibo #{{recibo.ReciboID}}</h3>
-      <div class="meta">Fecha: {{recibo.Fecha | date:'short'}} · Cliente: {{recibo.ClienteNombre || ('ID ' + recibo.ClienteID)}}</div>
+  <div class="meta">Fecha: {{recibo.Fecha | date:'dd-MM-yyyy'}} · Cliente: {{recibo.ClienteNombre || ('ID ' + recibo.ClienteID)}}</div>
     </div>
     <div class="totales-resumen">
       <div><span class="lbl">Total Pagos</span><span class="val">{{recibo.TotalPagos | number:'1.2-2'}}</span></div>
@@ -38,8 +39,8 @@
         <thead><tr><th>Factura</th><th>Fecha</th><th>Total</th><th>Saldo Ant.</th><th>Aplicado</th><th>Saldo Post.</th></tr></thead>
         <tbody>
           <tr *ngFor="let v of recibo.ventas">
-            <td>{{v.VentaID}}</td>
-            <td>{{v.FechaComp | date:'shortDate'}}</td>
+            <td><a class="link" [routerLink]="['/inventario/ventas', v.VentaID]">{{v.Numero || ('#'+v.VentaID)}}</a></td>
+            <td>{{v.FechaComp | date:'dd-MM-yyyy'}}</td>
             <td>{{v.TotalFactura | number:'1.2-2'}}</td>
             <td>{{v.SaldoAnterior | number:'1.2-2'}}</td>
             <td class="aplicado">{{v.ImporteAplicado | number:'1.2-2'}}</td>

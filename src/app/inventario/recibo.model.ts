@@ -23,8 +23,8 @@ export interface Recibo {
   Total?: number;
   TotalPagos?: number;
   TotalAplicado?: number;
-  Diferencia?: number;
-  ventas?: ReciboVentaAplicada[];
+  Diferencia?: number; // TotalPagos - TotalAplicado
+  ventas?: ReciboVentaAplicada[]; // array enriquecido desde backend
   pagos?: ReciboPago[];
   CreatedAt?: string;
   CreatedBy?: string;

@@ -1,24 +1,79 @@
-<div class="card p-3">
-  <h4>Listado de Recibos</h4>
-  <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px">
-    <input placeholder="buscar" [(ngModel)]="q" (input)="onSearchChange()">
-    <label>Desde <input type="date" [(ngModel)]="fechaDesde" (change)="onSearchChange()"></label>
-    <label>Hasta <input type="date" [(ngModel)]="fechaHasta" (change)="onSearchChange()"></label>
-    <a class="btn btn-sm btn-outline-primary" routerLink="/inventario/recibos/new">Nuevo Recibo</a>
+<div class="recibos-list card">
+  <div class="header">
+    <div class="title-block">
+      <h3>Recibos</h3>
+      <div class="subtitle">Listado de cobros registrados y su aplicación a facturas.</div>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" (click)="exportCsv()" title="Exportar CSV">CSV</button>
+      <button class="btn ghost" (click)="exportPdf()" title="Exportar PDF">PDF</button>
+      <a class="btn primary accent" routerLink="/inventario/recibos/new" title="Cargar nuevo recibo">Nuevo Recibo</a>
+    </div>
   </div>
 
-  <table class="table table-sm">
-    <thead><tr><th>ID</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>TotalPagos</th><th>TotalAplicado</th><th></th></tr></thead>
-    <tbody>
-      <tr *ngFor="let r of items">
-        <td>{{r.ReciboID}}</td>
-        <td>{{r.Fecha}}</td>
-        <td>{{r.ClienteNombre}}</td>
-        <td>{{r.Total}}</td>
-        <td>{{r.TotalPagos}}</td>
-        <td>{{r.TotalAplicado}}</td>
-        <td><a class="btn btn-sm btn-link" [routerLink]="['/inventario/recibos', r.ReciboID]">Ver</a></td>
-      </tr>
-    </tbody>
-  </table>
+  <div class="filters">
+    <input class="f-input" placeholder="Buscar (cliente u observaciones)" [(ngModel)]="q" (input)="onSearchChange()" />
+    <label class="f-inline">Desde <input type="date" [(ngModel)]="fechaDesde" (change)="onSearchChange()" /></label>
+    <label class="f-inline">Hasta <input type="date" [(ngModel)]="fechaHasta" (change)="onSearchChange()" /></label>
+  <button class="btn ghost" (click)="clearFilters()" *ngIf="q || fechaDesde || fechaHasta">Limpiar</button>
+    <div class="spacer"></div>
+    <div class="mini-stats">
+      <div><span class="lbl">Pagos (vista)</span><span class="val">{{aggregatePagos | number:'1.2-2'}}</span></div>
+      <div><span class="lbl">Aplicado (vista)</span><span class="val">{{aggregateAplicado | number:'1.2-2'}}</span></div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Fecha</th>
+          <th>Cliente</th>
+          <th class="text-right">Pagos</th>
+          <th class="text-right">Aplicado</th>
+          <th class="text-right">Dif.</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let r of items" [class.neg-diff]="r.Diferencia < 0" [class.pos-diff]="r.Diferencia > 0" [class.zero-diff]="r.Diferencia===0">
+          <td><span class="mono">#{{r.ReciboID}}</span></td>
+          <td><span class="date-chip" [title]="r.Fecha">{{r.displayFecha || r.Fecha}}</span></td>
+          <td><span class="cliente" [title]="r.ClienteDisplay">{{r.ClienteDisplay}}</span></td>
+          <td class="text-right"><span class="amount">{{r.TotalPagos | number:'1.2-2'}}</span></td>
+          <td class="text-right"><span class="amount">{{r.TotalAplicado | number:'1.2-2'}}</span></td>
+          <td class="text-right"><span class="diff" [class.zero]="r.Diferencia===0" [class.neg]="r.Diferencia<0" [class.pos]="r.Diferencia>0">{{r.Diferencia | number:'1.2-2'}}</span></td>
+          <td><a class="btn btn-sm link" [routerLink]="['/inventario/recibos', r.ReciboID]" title="Ver detalle">Ver</a></td>
+        </tr>
+        <tr *ngIf="!items.length && !loading"><td colspan="7" class="no-data">Sin recibos</td></tr>
+        <tr *ngIf="loading"><td colspan="7" class="loading">Cargando...</td></tr>
+      </tbody>
+      <tfoot *ngIf="items.length">
+        <tr class="totals-row">
+          <td colspan="3" class="label">Totales página</td>
+          <td class="text-right">{{aggregatePagos | number:'1.2-2'}}</td>
+          <td class="text-right">{{aggregateAplicado | number:'1.2-2'}}</td>
+          <td class="text-right">{{(aggregatePagos-aggregateAplicado) | number:'1.2-2'}}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="pager" *ngIf="total > limit || items.length">
+  <div class="pager-left">Página {{page}} / {{totalPages}} · Mostrando {{offset+1}} – {{endIndex}} de {{total}}</div>
+    <div class="pager-mid">
+      <button class="btn" (click)="pagePrev()" [disabled]="page===1">Anterior</button>
+      <button class="btn" (click)="pageNext()" [disabled]="page===totalPages">Siguiente</button>
+    </div>
+    <div class="pager-right">
+      <select class="f-input" [ngModel]="limit" (ngModelChange)="changeLimit($event)">
+        <option [ngValue]="10">10</option>
+        <option [ngValue]="25">25</option>
+        <option [ngValue]="50">50</option>
+        <option [ngValue]="100">100</option>
+      </select>
+    </div>
+  </div>
 </div>

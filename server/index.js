@@ -17,6 +17,18 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 import fs from 'fs';
+// Carga diferida de PDFKit para no romper si la dependencia aún no se instaló
+let PDFDocument = null;
+async function ensurePdfKit(){
+  if (!PDFDocument) {
+    try {
+      const mod = await import('pdfkit');
+      PDFDocument = mod.default || mod;
+    } catch (e) {
+      throw new Error('PDFKit no instalado. Ejecuta dentro de /server: npm install pdfkit');
+    }
+  }
+}
 const logFile = path.join(__dirname, 'requests.log');
 
 let db;
@@ -1863,11 +1875,25 @@ app.get('/api/ventas', async (req, res) => {
     const totalRow = await db.get(`SELECT COUNT(*) as cnt FROM ventas v LEFT JOIN clientes c ON c.ClienteID = v.ClienteID ${whereFinal}`, params);
     const total = totalRow ? totalRow.cnt : 0;
 
+    // Ordenación dinámica segura
+    const sortByRaw = (req.query.sortBy || req.query.sortby || '').toString();
+    const sortDirRaw = (req.query.sortDir || req.query.sortdir || '').toString().toUpperCase();
+    const allowedSort = {
+      'fecha': 'v.FechaComp',
+      'total': 'v.Total',
+      'subtotal': 'v.Subtotal',
+      'numero': 'v.NumeroComp',
+      'saldo': hasSaldo ? 'IFNULL(v.Saldo, v.Total)' : 'v.Total',
+      'id': 'v.VentaID'
+    };
+  const sortCol = allowedSort.hasOwnProperty(sortByRaw) ? allowedSort[sortByRaw] : 'v.VentaID';
+    const sortDir = (sortDirRaw === 'ASC' || sortDirRaw === 'DESC') ? sortDirRaw : 'DESC';
+
     const saldoSelect = hasSaldo ? 'v.Saldo as Saldo,' : 'v.Total as Saldo,';
     const sql = `SELECT v.VentaID, v.FechaComp, v.TipoComp, v.NumeroComp, v.PuntoVenta, v.Subtotal, (v.Total - v.Subtotal) as IVA, v.Total, ${saldoSelect} v.NotaPedidoID, c.NombreRazonSocial as ClienteNombre
       FROM ventas v LEFT JOIN clientes c ON c.ClienteID = v.ClienteID
       ${whereFinal}
-      ORDER BY v.VentaID DESC LIMIT ? OFFSET ?`;
+      ORDER BY ${sortCol} ${sortDir} LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
     const items = await db.all(sql, params);
@@ -1875,6 +1901,178 @@ app.get('/api/ventas', async (req, res) => {
   } catch (err) {
     console.error('Error GET /api/ventas', err && (err.stack || err.message || err));
     res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Export CSV de ventas con mismos filtros; sin paginar por defecto (límite opcional)
+app.get('/api/ventas/export', async (req, res) => {
+  try {
+    const limit = req.query.limit ? (parseInt(req.query.limit) || 0) : 0; // 0 = sin límite
+    const offset = 0; // siempre desde inicio para export
+    const q = req.query.q ? `%${req.query.q}%` : null;
+    const fechaDesde = req.query.fechaDesde || null;
+    const tipo = req.query.tipo || null;
+    const numero = req.query.numero ? `%${req.query.numero}%` : null;
+    const punto = req.query.punto ? `%${req.query.punto}%` : null;
+    const cliente = req.query.cliente ? `%${req.query.cliente}%` : null;
+    const subtotalMin = (req.query.subtotalMin || req.query.subtotalmin) ? Number(req.query.subtotalMin || req.query.subtotalmin) : null;
+    const totalMin = req.query.totalMin ? Number(req.query.totalMin) : null;
+    const totalMax = req.query.totalMax ? Number(req.query.totalMax) : null;
+    const saldoOnly = (req.query.saldoOnly === '1' || req.query.saldoOnly === 'true' || req.query.withSaldo === '1' || req.query.withSaldo === 'true');
+
+    const whereClauses = [];
+    const params = [];
+    if (q) whereClauses.push('(v.NumeroComp LIKE ? OR c.NombreRazonSocial LIKE ?)'), params.push(q, q);
+    if (fechaDesde) whereClauses.push('date(v.FechaComp) >= date(?)'), params.push(fechaDesde);
+    if (tipo) whereClauses.push('v.TipoComp = ?'), params.push(tipo);
+    if (numero) whereClauses.push('v.NumeroComp LIKE ?'), params.push(numero);
+    if (punto) whereClauses.push('v.PuntoVenta LIKE ?'), params.push(punto);
+    if (cliente) whereClauses.push('c.NombreRazonSocial LIKE ?'), params.push(cliente);
+    if (subtotalMin !== null) whereClauses.push('v.Subtotal >= ?'), params.push(subtotalMin);
+    if (totalMin !== null) whereClauses.push('v.Total >= ?'), params.push(totalMin);
+    if (totalMax !== null) whereClauses.push('v.Total <= ?'), params.push(totalMax);
+
+    const hasSaldo = await columnExists('ventas', 'Saldo');
+    if (saldoOnly) {
+      if (hasSaldo) whereClauses.push('IFNULL(v.Saldo, v.Total) > 0'); else whereClauses.push('v.Total > 0');
+    }
+    const whereFinal = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
+
+    const sortByRaw = (req.query.sortBy || req.query.sortby || '').toString();
+    const sortDirRaw = (req.query.sortDir || req.query.sortdir || '').toString().toUpperCase();
+    const allowedSort = {
+      'fecha': 'v.FechaComp',
+      'total': 'v.Total',
+      'subtotal': 'v.Subtotal',
+      'numero': 'v.NumeroComp',
+      'saldo': hasSaldo ? 'IFNULL(v.Saldo, v.Total)' : 'v.Total',
+      'id': 'v.VentaID'
+    };
+  const sortCol = allowedSort.hasOwnProperty(sortByRaw) ? allowedSort[sortByRaw] : 'v.VentaID';
+    const sortDir = (sortDirRaw === 'ASC' || sortDirRaw === 'DESC') ? sortDirRaw : 'DESC';
+
+    const saldoSelect = hasSaldo ? 'v.Saldo as Saldo,' : 'v.Total as Saldo,';
+    let sql = `SELECT v.VentaID, v.FechaComp, v.TipoComp, v.NumeroComp, v.PuntoVenta, v.Subtotal, (v.Total - v.Subtotal) as IVA, v.Total, ${saldoSelect} c.NombreRazonSocial as ClienteNombre
+      FROM ventas v LEFT JOIN clientes c ON c.ClienteID = v.ClienteID
+      ${whereFinal}
+      ORDER BY ${sortCol} ${sortDir}`;
+    if (limit > 0) sql += ` LIMIT ${limit} OFFSET ${offset}`;
+    const rows = await db.all(sql, params);
+
+    // Generar CSV sencillo
+    const headers = ['VentaID','Fecha','Tipo','Numero','PuntoVenta','Cliente','Subtotal','IVA','Total','Saldo'];
+    const lines = [headers.join(',')];
+    for (const r of rows) {
+      const fecha = (r.FechaComp || '').split(' ')[0];
+      const vals = [r.VentaID, fecha, r.TipoComp, r.NumeroComp, r.PuntoVenta, (r.ClienteNombre||'').replace(/,/g,' '), r.Subtotal, r.IVA, r.Total, r.Saldo];
+      lines.push(vals.join(','));
+    }
+    const csv = lines.join('\n');
+    res.setHeader('Content-Type','text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition','attachment; filename="ventas_export.csv"');
+    res.send(csv);
+  } catch (err) {
+    console.error('Error GET /api/ventas/export', err && (err.stack || err.message || err));
+    res.status(500).json({ ok:false, error: err.message || err });
+  }
+});
+
+// Export PDF de ventas
+app.get('/api/ventas/export/pdf', async (req, res) => {
+  try {
+    const q = req.query.q ? `%${req.query.q}%` : null;
+    const fechaDesde = req.query.fechaDesde || null;
+    const tipo = req.query.tipo || null;
+    const numero = req.query.numero ? `%${req.query.numero}%` : null;
+    const punto = req.query.punto ? `%${req.query.punto}%` : null;
+    const cliente = req.query.cliente ? `%${req.query.cliente}%` : null;
+    const subtotalMin = (req.query.subtotalMin || req.query.subtotalmin) ? Number(req.query.subtotalMin || req.query.subtotalmin) : null;
+    const totalMin = req.query.totalMin ? Number(req.query.totalMin) : null;
+    const totalMax = req.query.totalMax ? Number(req.query.totalMax) : null;
+    const saldoOnly = (req.query.saldoOnly === '1' || req.query.saldoOnly === 'true' || req.query.withSaldo === '1' || req.query.withSaldo === 'true');
+
+    const whereClauses = [];
+    const params = [];
+    if (q) whereClauses.push('(v.NumeroComp LIKE ? OR c.NombreRazonSocial LIKE ?)') , params.push(q, q);
+    if (fechaDesde) whereClauses.push('date(v.FechaComp) >= date(?)') , params.push(fechaDesde);
+    if (tipo) whereClauses.push('v.TipoComp = ?') , params.push(tipo);
+    if (numero) whereClauses.push('v.NumeroComp LIKE ?') , params.push(numero);
+    if (punto) whereClauses.push('v.PuntoVenta LIKE ?') , params.push(punto);
+    if (cliente) whereClauses.push('c.NombreRazonSocial LIKE ?') , params.push(cliente);
+    if (subtotalMin !== null) whereClauses.push('v.Subtotal >= ?') , params.push(subtotalMin);
+    if (totalMin !== null) whereClauses.push('v.Total >= ?') , params.push(totalMin);
+    if (totalMax !== null) whereClauses.push('v.Total <= ?') , params.push(totalMax);
+    const hasSaldo = await columnExists('ventas', 'Saldo');
+    if (saldoOnly) {
+      if (hasSaldo) whereClauses.push('IFNULL(v.Saldo, v.Total) > 0'); else whereClauses.push('v.Total > 0');
+    }
+    const whereFinal = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
+
+    const sortByRaw = (req.query.sortBy || req.query.sortby || '').toString();
+    const sortDirRaw = (req.query.sortDir || req.query.sortdir || '').toString().toUpperCase();
+    const allowedSort = {
+      'fecha': 'v.FechaComp',
+      'total': 'v.Total',
+      'subtotal': 'v.Subtotal',
+      'numero': 'v.NumeroComp',
+      'saldo': hasSaldo ? 'IFNULL(v.Saldo, v.Total)' : 'v.Total',
+      'id': 'v.VentaID'
+    };
+    const sortCol = Object.prototype.hasOwnProperty.call(allowedSort, sortByRaw) ? allowedSort[sortByRaw] : 'v.VentaID';
+    const sortDir = (sortDirRaw === 'ASC' || sortDirRaw === 'DESC') ? sortDirRaw : 'DESC';
+
+    const saldoSelect = hasSaldo ? 'v.Saldo as Saldo,' : 'v.Total as Saldo,';
+    const sql = `SELECT v.VentaID, v.FechaComp, v.TipoComp, v.NumeroComp, v.PuntoVenta, v.Subtotal, (v.Total - v.Subtotal) as IVA, v.Total, ${saldoSelect} c.NombreRazonSocial as ClienteNombre
+      FROM ventas v LEFT JOIN clientes c ON c.ClienteID = v.ClienteID
+      ${whereFinal}
+      ORDER BY ${sortCol} ${sortDir} LIMIT 1500`;
+    const rows = await db.all(sql, params);
+
+    res.setHeader('Content-Type','application/pdf');
+    res.setHeader('Content-Disposition','attachment; filename="ventas.pdf"');
+  await ensurePdfKit();
+  const doc = new PDFDocument({ margin:40 });
+    doc.pipe(res);
+    doc.fontSize(16).text('Listado de Ventas', { align:'center' });
+    const filtros = [];
+    if (fechaDesde) filtros.push('Desde '+fechaDesde); if (tipo) filtros.push('Tipo '+tipo);
+    if (saldoOnly) filtros.push('Solo con saldo');
+    if (cliente) filtros.push('Cliente');
+    if (q) filtros.push('q');
+    doc.moveDown(0.5).fontSize(9).fillColor('#444').text('Filtros: '+(filtros.join(' | ')||'Ninguno'));
+    doc.moveDown(0.5).fillColor('#000');
+    doc.fontSize(9).text('ID',40,{continued:true})
+      .text('Fecha',70,{continued:true})
+      .text('Tipo',125,{continued:true})
+      .text('Pto',155,{continued:true})
+      .text('Numero',185,{continued:true})
+      .text('Cliente',250,{continued:true})
+      .text('Subtotal',400,{continued:true, align:'right'})
+      .text('Total',470,{continued:true, align:'right'})
+      .text('Saldo',530,{align:'right'});
+    doc.moveTo(40, doc.y).lineTo(560, doc.y).stroke();
+
+    let sumSubtotal=0, sumTotal=0, sumSaldo=0;
+    rows.forEach(r => {
+      const fecha = (r.FechaComp||'').replace('T',' ').split(' ')[0];
+      sumSubtotal += r.Subtotal || 0;
+      sumTotal += r.Total || 0;
+      sumSaldo += r.Saldo || 0;
+      doc.text('#'+r.VentaID,40,{continued:true})
+        .text(fecha,70,{continued:true})
+        .text(r.TipoComp||'',125,{continued:true})
+        .text(String(r.PuntoVenta||''),155,{continued:true})
+        .text(String(r.NumeroComp||'').substring(0,10),185,{continued:true})
+        .text(String(r.ClienteNombre||'').substring(0,20),250,{continued:true})
+        .text((r.Subtotal||0).toFixed(2),400,{continued:true, align:'right'})
+        .text((r.Total||0).toFixed(2),470,{continued:true, align:'right'})
+        .text((r.Saldo||0).toFixed(2),530,{align:'right'});
+    });
+    doc.moveDown(0.5).fontSize(10).text(`Totales: Subtotal ${sumSubtotal.toFixed(2)} | Total ${sumTotal.toFixed(2)} | Saldo ${sumSaldo.toFixed(2)}`);
+    doc.end();
+  } catch (err) {
+    console.error('Error GET /api/ventas/export/pdf', err && (err.stack || err.message || err));
+    res.status(500).json({ ok:false, error: err.message || err });
   }
 });
 
@@ -2006,14 +2204,93 @@ app.get('/api/recibos/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: 'ID inválido' });
-    const recibo = await db.get('SELECT * FROM recibos WHERE ReciboID = ?', id);
+    // Traer recibo + nombre cliente
+    const recibo = await db.get(`SELECT r.*, c.NombreRazonSocial as ClienteNombre
+      FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID
+      WHERE r.ReciboID = ?`, id);
     if (!recibo) return res.status(404).json({ ok: false, error: 'Recibo no encontrado' });
-    const pagos = await db.all('SELECT * FROM recibo_pagos WHERE ReciboID = ? ORDER BY ReciboPagoID ASC', id);
-    const aplicaciones = await db.all('SELECT * FROM recibo_ventas WHERE ReciboID = ? ORDER BY ReciboVentaID ASC', id);
-    res.json({ ...recibo, pagos, aplicaciones });
+    const pagos = await db.all('SELECT TipoPago, Monto, Datos FROM recibo_pagos WHERE ReciboID = ? ORDER BY ReciboPagoID ASC', id);
+    // Enriquecer aplicaciones con datos de la factura.
+    // Nota: SaldoAnterior calculado de forma estimada: SaldoPosterior + ImporteAplicado. Si hubo recibos posteriores, esto puede diferir del saldo histórico real.
+    const ventasAplic = await db.all(`SELECT rv.VentaID, v.NumeroComp as Numero, v.FechaComp, v.Total as TotalFactura,
+        rv.ImporteAplicado,
+        (IFNULL(v.Saldo,0) + rv.ImporteAplicado) as SaldoAnterior,
+        IFNULL(v.Saldo,0) as SaldoPosterior
+      FROM recibo_ventas rv
+      LEFT JOIN ventas v ON v.VentaID = rv.VentaID
+      WHERE rv.ReciboID = ?
+      ORDER BY rv.ReciboVentaID ASC`, id);
+    const totalPagos = pagos.reduce((s,p)=> s + Number(p.Monto||0), 0);
+    const totalAplicado = ventasAplic.reduce((s,v)=> s + Number(v.ImporteAplicado||0), 0);
+    const diferencia = +(totalPagos - totalAplicado).toFixed(2);
+    res.json({ ...recibo, pagos, ventas: ventasAplic, TotalPagos: totalPagos, TotalAplicado: totalAplicado, Diferencia: diferencia });
   } catch (err) {
     console.error('Error GET /api/recibos/:id', err && (err.stack || err.message || err));
     res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Export PDF detalle de un recibo
+app.get('/api/recibos/:id/export/pdf', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ ok:false, error:'ID inválido'});
+    const recibo = await db.get(`SELECT r.*, c.NombreRazonSocial as ClienteNombre
+      FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID
+      WHERE r.ReciboID = ?`, id);
+    if (!recibo) return res.status(404).json({ ok:false, error:'Recibo no encontrado'});
+    const pagos = await db.all('SELECT TipoPago, Monto, Datos FROM recibo_pagos WHERE ReciboID = ? ORDER BY ReciboPagoID ASC', id);
+    const ventasAplic = await db.all(`SELECT rv.VentaID, v.NumeroComp as Numero, v.FechaComp, v.Total as TotalFactura,
+        rv.ImporteAplicado,
+        (IFNULL(v.Saldo,0) + rv.ImporteAplicado) as SaldoAnterior,
+        IFNULL(v.Saldo,0) as SaldoPosterior
+      FROM recibo_ventas rv LEFT JOIN ventas v ON v.VentaID = rv.VentaID
+      WHERE rv.ReciboID = ? ORDER BY rv.ReciboVentaID ASC`, id);
+    const totalPagos = pagos.reduce((s,p)=> s + Number(p.Monto||0), 0);
+    const totalAplicado = ventasAplic.reduce((s,v)=> s + Number(v.ImporteAplicado||0), 0);
+    const diferencia = +(totalPagos - totalAplicado).toFixed(2);
+
+    res.setHeader('Content-Type','application/pdf');
+    res.setHeader('Content-Disposition',`attachment; filename="recibo-${id}.pdf"`);
+    await ensurePdfKit();
+    const doc = new PDFDocument({ margin:42 });
+    doc.pipe(res);
+    doc.fontSize(18).text(`Recibo #${id}`, { align:'center' });
+    doc.moveDown(0.5).fontSize(10).text(`Fecha: ${recibo.Fecha}`);
+    doc.text(`Cliente: ${recibo.ClienteNombre || ('ID '+ (recibo.ClienteID||'-'))}`);
+    if (recibo.Observaciones) {
+      doc.moveDown(0.5).fontSize(9).fillColor('#444').text('Observaciones: '+recibo.Observaciones);
+      doc.fillColor('#000');
+    }
+    doc.moveDown(0.7).fontSize(11).text('Pagos', { underline:true });
+    if (!pagos.length) {
+      doc.fontSize(9).text('Sin pagos');
+    } else {
+      pagos.forEach(p=>{
+        const monto = Number(p.Monto)||0;
+        doc.fontSize(9).text(`• ${p.TipoPago}: ${monto.toFixed(2)} ${p.Datos?('- '+p.Datos):''}`);
+      });
+    }
+    doc.moveDown(0.7).fontSize(11).text('Aplicación a Facturas', { underline:true });
+    if (!ventasAplic.length) {
+      doc.fontSize(9).text('Sin facturas asociadas');
+    } else {
+      doc.fontSize(9).text('Factura    Fecha       Total    SaldoAnt  Aplicado  SaldoPost');
+      doc.moveTo(40, doc.y).lineTo(560, doc.y).stroke();
+      ventasAplic.forEach(v=>{
+        const fecha = (v.FechaComp||'').replace('T',' ').split(' ')[0];
+        const linea = `${(v.Numero||('#'+v.VentaID)).padEnd(10).slice(0,10)} ${fecha.padEnd(10)} ${Number(v.TotalFactura||0).toFixed(2).padStart(8)} ${Number(v.SaldoAnterior||0).toFixed(2).padStart(8)} ${Number(v.ImporteAplicado||0).toFixed(2).padStart(8)} ${Number(v.SaldoPosterior||0).toFixed(2).padStart(9)}`;
+        doc.fontSize(8).text(linea);
+      });
+    }
+    doc.moveDown(0.8).fontSize(11).text('Resumen', { underline:true });
+    doc.fontSize(9).text(`Total Pagos: ${totalPagos.toFixed(2)}`);
+    doc.text(`Total Aplicado: ${totalAplicado.toFixed(2)}`);
+    doc.text(`Diferencia: ${diferencia.toFixed(2)}`);
+    doc.end();
+  } catch (err) {
+    console.error('Error GET /api/recibos/:id/export/pdf', err && (err.stack || err.message || err));
+    if (!res.headersSent) res.status(500).json({ ok:false, error: err.message || err });
   }
 });
 
@@ -2052,6 +2329,110 @@ app.get('/api/recibos', async (req, res) => {
   } catch (err) {
     console.error('Error GET /api/recibos', err && (err.stack || err.message || err));
     res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Export CSV de recibos
+app.get('/api/recibos/export', async (req, res) => {
+  try {
+    const fechaDesde = req.query.fechaDesde || null;
+    const fechaHasta = req.query.fechaHasta || null;
+    const q = req.query.q ? `%${req.query.q}%` : null;
+    const cliente = req.query.cliente ? Number(req.query.cliente) : null;
+    const whereClauses = [];
+    const params = [];
+    if (cliente) whereClauses.push('r.ClienteID = ?'), params.push(cliente);
+    if (fechaDesde) whereClauses.push('date(r.Fecha) >= date(?)'), params.push(fechaDesde);
+    if (fechaHasta) whereClauses.push('date(r.Fecha) <= date(?)'), params.push(fechaHasta);
+    if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q);
+    const where = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
+    const rows = await db.all(`SELECT r.ReciboID, r.Fecha, c.NombreRazonSocial as ClienteNombre,
+      IFNULL((SELECT SUM(Monto) FROM recibo_pagos rp WHERE rp.ReciboID = r.ReciboID),0) as TotalPagos,
+      IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas rv WHERE rv.ReciboID = r.ReciboID),0) as TotalAplicado,
+      (IFNULL((SELECT SUM(Monto) FROM recibo_pagos rp WHERE rp.ReciboID = r.ReciboID),0) - IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas rv WHERE rv.ReciboID = r.ReciboID),0)) as Diferencia
+      FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID ${where} ORDER BY r.ReciboID DESC`, params);
+    const headers = ['ReciboID','Fecha','Cliente','Pagos','Aplicado','Diferencia'];
+    const csvLines = [headers.join(',')];
+    for (const r of rows) {
+      const fecha = (r.Fecha||'').replace('T',' ').split(' ')[0];
+      const vals = [r.ReciboID, fecha, (r.ClienteNombre||'').replace(/,/g,' '), r.TotalPagos, r.TotalAplicado, r.Diferencia];
+      csvLines.push(vals.join(','));
+    }
+    res.setHeader('Content-Type','text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition','attachment; filename="recibos_export.csv"');
+    res.send(csvLines.join('\n'));
+  } catch (err) {
+    console.error('Error GET /api/recibos/export', err && (err.stack || err.message || err));
+    res.status(500).json({ ok:false, error: err.message || err });
+  }
+});
+
+// Export PDF simple de recibos
+app.get('/api/recibos/export/pdf', async (req, res) => {
+  try {
+    const fechaDesde = req.query.fechaDesde || null;
+    const fechaHasta = req.query.fechaHasta || null;
+    const q = req.query.q ? `%${req.query.q}%` : null;
+    const cliente = req.query.cliente ? Number(req.query.cliente) : null;
+    const whereClauses = [];
+    const params = [];
+    if (cliente) whereClauses.push('r.ClienteID = ?'), params.push(cliente);
+    if (fechaDesde) whereClauses.push('date(r.Fecha) >= date(?)'), params.push(fechaDesde);
+    if (fechaHasta) whereClauses.push('date(r.Fecha) <= date(?)'), params.push(fechaHasta);
+    if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q);
+    const where = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
+    const rows = await db.all(`SELECT r.ReciboID, r.Fecha, c.NombreRazonSocial as ClienteNombre,
+      IFNULL((SELECT SUM(Monto) FROM recibo_pagos rp WHERE rp.ReciboID = r.ReciboID),0) as TotalPagos,
+      IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas rv WHERE rv.ReciboID = r.ReciboID),0) as TotalAplicado,
+      (IFNULL((SELECT SUM(Monto) FROM recibo_pagos rp WHERE rp.ReciboID = r.ReciboID),0) - IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas rv WHERE rv.ReciboID = r.ReciboID),0)) as Diferencia
+      FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID ${where} ORDER BY r.ReciboID DESC LIMIT 1000`, params);
+
+    res.setHeader('Content-Type','application/pdf');
+    res.setHeader('Content-Disposition','attachment; filename="recibos.pdf"');
+  await ensurePdfKit();
+  const doc = new PDFDocument({ margin:40 });
+    doc.pipe(res);
+    doc.fontSize(16).text('Listado de Recibos', { align:'center' });
+    const filtros = [];
+    if (fechaDesde) filtros.push('Desde '+fechaDesde); if (fechaHasta) filtros.push('Hasta '+fechaHasta);
+    if (cliente) filtros.push('ClienteID '+cliente);
+    if (q) filtros.push('q');
+    doc.moveDown(0.5).fontSize(9).fillColor('#444').text('Filtros: '+(filtros.join(' | ')||'Ninguno'));
+    doc.moveDown(0.5).fillColor('#000');
+    // encabezado tabla
+    doc.fontSize(9).text('ID',40,{continued:true})
+      .text('Fecha',80,{continued:true})
+      .text('Cliente',140,{continued:true})
+      .text('Pagos',320,{continued:true, align:'right'})
+      .text('Aplicado',400,{continued:true, align:'right'})
+      .text('Dif.',480,{align:'right'});
+    doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
+    let totalPag=0,totalApl=0;
+    const safeNum = (v)=> { const n = Number(v); return Number.isFinite(n)? n:0; };
+    try {
+      for (const r of rows) {
+        const fecha = (r.Fecha||'').replace('T',' ').split(' ')[0];
+        const pag = safeNum(r.TotalPagos);
+        const apl = safeNum(r.TotalAplicado);
+        const dif = safeNum(r.Diferencia);
+        totalPag += pag; totalApl += apl;
+        doc.text('#'+(r.ReciboID||''),40,{continued:true})
+          .text(fecha,80,{continued:true})
+          .text(String(r.ClienteNombre||'Sin Cliente').substring(0,28),140,{continued:true})
+          .text(pag.toFixed(2),320,{continued:true, align:'right'})
+          .text(apl.toFixed(2),400,{continued:true, align:'right'})
+          .text(dif.toFixed(2),480,{align:'right'});
+      }
+    } catch(rowErr){
+      doc.moveDown(1).fillColor('red').fontSize(9).text('Error renderizando fila PDF: '+ (rowErr.message||rowErr));
+      doc.fillColor('#000');
+    }
+    const diffTot = (totalPag - totalApl);
+    doc.moveDown(0.5).fontSize(10).text('Totales: Pagos '+totalPag.toFixed(2)+' | Aplicado '+totalApl.toFixed(2)+' | Diferencia '+diffTot.toFixed(2));
+    doc.end();
+  } catch (err) {
+    console.error('Error GET /api/recibos/export/pdf', err && (err.stack || err.message || err));
+    res.status(500).json({ ok:false, error: err.message || err });
   }
 });
 

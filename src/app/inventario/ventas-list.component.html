@@ -1,19 +1,33 @@
 <div class="ventas-list card">
   <header class="card-header">
-    <h3 class="title">Facturas registradas</h3>
+    <div class="heading">
+      <h3 class="title">Facturas registradas</h3>
+      <div class="summary-bar" *ngIf="items.length">
+        <span class="chip">Subtotal pág: {{sumSubtotal | number:'1.2-2'}}</span>
+        <span class="chip">Total pág: {{sumTotal | number:'1.2-2'}}</span>
+        <span class="chip" [class.warn]="sumSaldo>0">Saldo pág: {{sumSaldo | number:'1.2-2'}}</span>
+        <span class="chip alt" *ngIf="countPendientes">Pendientes: {{countPendientes}}</span>
+      </div>
+    </div>
     <div class="actions">
-      <button class="btn primary" (click)="clearFilters()">Limpiar</button>
-      <button class="btn" (click)="load()">Buscar</button>
-  <a class="btn btn-outline-primary" routerLink="/inventario/recibos/new" style="margin-left:8px">Nuevo Recibo</a>
+      <button class="btn ghost" (click)="exportCsv()" title="Exportar CSV">CSV</button>
+      <button class="btn ghost" (click)="exportPdf()" title="Exportar PDF">PDF</button>
+      <label class="toggle-saldo">
+        <input type="checkbox" [(ngModel)]="showOnlySaldo" (change)="toggleShowSaldo()" />
+        <span>Solo con saldo</span>
+      </label>
+      <button class="btn" (click)="load()">Refrescar</button>
+      <button class="btn ghost" (click)="clearFilters()">Limpiar</button>
+      <a class="btn primary" routerLink="/inventario/recibos/new">Nuevo Recibo</a>
     </div>
   </header>
 
   <section class="filters compact">
-    <input class="f-input" placeholder="Buscar global" [(ngModel)]="q" (ngModelChange)="onFilterChange()" />
-    <div class="help">Filtra por columna usando los campos debajo de los encabezados.</div>
+    <input class="f-input search" placeholder="Buscar global (cliente, nro...)" [(ngModel)]="q" (ngModelChange)="onFilterChange()" />
+    <div class="help">Los campos debajo de los encabezados filtran columnas específicas.</div>
   </section>
 
-  <div class="table-wrap">
+  <div class="table-wrap" [class.loading-state]="loading">
     <table class="table">
       <thead>
         <tr>
@@ -25,56 +39,68 @@
           <th class="text-right col-medium">Subtotal</th>
           <th class="text-right col-medium">IVA</th>
           <th class="text-right col-medium">Total</th>
+          <th class="text-right col-medium">Saldo</th>
         </tr>
         <tr class="filter-row">
           <th>
             <input class="f-input small" type="date" [(ngModel)]="fechaDesde" (ngModelChange)="onFilterChange()" />
           </th>
-          <th>
-            <select class="f-input small" [(ngModel)]="tipo" (ngModelChange)="onFilterChange()">
-              <option value="">Todos</option>
-              <option value="A">A</option>
-              <option value="FA">FA</option>
-            </select>
-          </th>
-          <th>
-            <input class="f-input small" placeholder="Pto" [(ngModel)]="punto" (ngModelChange)="onFilterChange()" />
-          </th>
-          <th>
-            <input class="f-input small" placeholder="Nro" [(ngModel)]="numero" (ngModelChange)="onFilterChange()" />
-          </th>
-          <th>
-            <input class="f-input" placeholder="Cliente" [(ngModel)]="cliente" (ngModelChange)="onFilterChange()" />
-          </th>
-          <th class="text-right">
-            <input class="f-input small" placeholder="Min" type="number" [(ngModel)]="subtotalMin" (ngModelChange)="onFilterChange()" />
-          </th>
-          <th class="text-right">
-            <input class="f-input small" placeholder="Min" type="number" [(ngModel)]="totalMin" (ngModelChange)="onFilterChange()" />
-          </th>
+            <th>
+              <select class="f-input small" [(ngModel)]="tipo" (ngModelChange)="onFilterChange()">
+                <option value="">Todos</option>
+                <option value="A">A</option>
+                <option value="FA">FA</option>
+              </select>
+            </th>
+            <th>
+              <input class="f-input small" placeholder="Pto" [(ngModel)]="punto" (ngModelChange)="onFilterChange()" />
+            </th>
+            <th>
+              <input class="f-input small" placeholder="Nro" [(ngModel)]="numero" (ngModelChange)="onFilterChange()" />
+            </th>
+            <th>
+              <input class="f-input" placeholder="Cliente" [(ngModel)]="cliente" (ngModelChange)="onFilterChange()" />
+            </th>
+            <th class="text-right">
+              <input class="f-input small" placeholder=">= Sub" type="number" [(ngModel)]="subtotalMin" (ngModelChange)="onFilterChange()" />
+            </th>
+            <th class="text-right">
+              <input class="f-input small" placeholder=">= IVA" type="number" [(ngModel)]="totalMin" (ngModelChange)="onFilterChange()" />
+            </th>
+            <th></th>
+            <th></th>
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let v of items" [class.with-saldo]="(v.Saldo || v.Total) > 0">
+        <tr *ngFor="let v of items" [class.with-saldo]="(v._Saldo || 0) > 0.0001">
           <td>{{v.displayFecha}}</td>
           <td>{{v.TipoComp}}</td>
           <td><span class="badge">{{v.PuntoVenta}}</span></td>
           <td><a class="link" [routerLink]="['/inventario/ventas', v.VentaID]">{{v.NumeroComp}}</a></td>
-          <td>{{v.ClienteNombre || v.NombreFiscal || 'N/D'}}</td>
+          <td class="cliente-cell">{{v.ClienteNombre || v.NombreFiscal || 'N/D'}}</td>
           <td class="text-right">{{v.Subtotal | number:'1.2-2'}}</td>
           <td class="text-right">{{(v.IVA !== undefined ? v.IVA : (v.Total - v.Subtotal)) | number:'1.2-2'}}</td>
           <td class="text-right bold">{{v.Total | number:'1.2-2'}}</td>
+          <td class="text-right" [class.saldo-zero]="(v._Saldo||0)<0.01" [class.saldo-pos]="(v._Saldo||0)>=0.01">{{v._Saldo | number:'1.2-2'}}</td>
         </tr>
-        <tr *ngIf="items.length===0"><td colspan="6" class="no-data">Sin facturas</td></tr>
+        <tr *ngIf="!loading && items.length===0"><td colspan="9" class="no-data">Sin facturas</td></tr>
+        <tr class="totals-row" *ngIf="items.length">
+          <td colspan="5" class="label">Totales página</td>
+          <td class="text-right">{{sumSubtotal | number:'1.2-2'}}</td>
+          <td></td>
+          <td class="text-right">{{sumTotal | number:'1.2-2'}}</td>
+          <td class="text-right" [class.warn]="sumSaldo>0">{{sumSaldo | number:'1.2-2'}}</td>
+        </tr>
       </tbody>
     </table>
+    <div class="loading" *ngIf="loading">Cargando...</div>
   </div>
 
   <footer class="pager">
     <div class="pager-controls">
-      <button class="btn" (click)="pagePrev()" [disabled]="offset===0">Anterior</button>
-      <button class="btn" (click)="pageNext()" [disabled]="offset+limit>=total">Siguiente</button>
+      <button class="btn" (click)="pagePrev()" [disabled]="offset===0 || loading">Anterior</button>
+      <button class="btn" (click)="pageNext()" [disabled]="offset+limit>=total || loading">Siguiente</button>
     </div>
-    <div class="pager-info">Mostrando {{offset+1}} - {{endIndex}} de {{total}}</div>
+    <div class="pager-info">Mostrando {{offset+1}} - {{endIndex}} de {{total}} <span *ngIf="showOnlySaldo">(solo con saldo)</span></div>
   </footer>
 </div>

@@ -1,0 +1,28 @@
+.recibos-list.card { background:#fff; border:1px solid #e1e6ef; border-radius:10px; padding:16px; box-shadow:0 4px 16px rgba(18,38,63,0.06); display:flex; flex-direction:column; gap:12px; }
+.recibos-list .header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+.recibos-list h3 { margin:0; font-size:1.15rem; font-weight:600; color:#12263f; }
+.recibos-list .filters { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; background:#f7f9fb; padding:10px 12px; border:1px solid #e3e9f1; border-radius:10px; }
+.f-input { padding:8px 10px; border:1px solid #dce3ed; border-radius:6px; background:#fff; }
+.f-inline { font-size:.75rem; display:flex; align-items:center; gap:4px; color:#555; }
+.table-wrap { overflow:auto; max-height:520px; }
+.table { width:100%; border-collapse:collapse; }
+.table thead th { position:sticky; top:0; background:linear-gradient(180deg,#f8fbff,#ffffff); padding:8px 10px; font-size:.75rem; font-weight:600; text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid #e6edf5; }
+.table tbody td { padding:10px; border-bottom:1px solid #f1f5fa; font-size:.8rem; }
+.text-right { text-align:right; }
+.mono { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono"; font-size:.7rem; background:#f3f6fa; padding:2px 5px; border-radius:4px; }
+.btn { padding:8px 12px; border:1px solid #d2dbe7; background:#fff; border-radius:6px; cursor:pointer; font-size:.75rem; }
+.btn.primary { background:#0b5ed7; color:#fff; border-color:#0b5ed7; }
+.btn.primary.accent { background:linear-gradient(90deg,#0b5ed7,#1285ff); box-shadow:0 4px 12px rgba(11,94,215,0.35); }
+.btn.ghost { background:#f1f6fb; border-color:#d5e2ee; }
+.btn.ghost:hover { background:#e6f0f8; }
+.btn.link { background:transparent; border:none; color:#0b5ed7; padding:4px 6px; }
+.btn.link:hover { text-decoration:underline; }
+.no-data, .loading { text-align:center; padding:18px; font-size:.85rem; color:#666; }
+.neg-diff td { background:rgba(182,0,0,0.05); }
+.pos-diff td { background:rgba(16,118,37,0.04); }
+.diff-zero { opacity:.6; }
+.cliente { font-weight:500; }
+@media (max-width:860px){ .recibos-list .filters { flex-direction:column; } .f-input { width:100%; } .table-wrap { max-height:380px; } }
+.btn { padding:8px 12px; border-radius:8px; border:1px solid #ced7e2; background:#fff; cursor:pointer; font-size:.7rem; font-weight:500; color:#1a314a; }
+.btn.primary { background:#0b5ed7; border-color:#0b5ed7; color:#fff; box-shadow:0 4px 10px rgba(11,94,215,0.25); }
+.btn.primary:hover { background:#0950b6; }
