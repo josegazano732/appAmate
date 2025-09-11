@@ -108,7 +108,11 @@ import { ToastService } from '../shared/toast.service';
                 <select class="form-select" [(ngModel)]="factForm.TipoComp">
                   <option value="FA">Factura A</option>
                   <option value="FB">Factura B</option>
-                  <option value="NC">Nota de Crédito</option>
+                  <option value="ND">Nota de Debito A</option>
+                  <option value="ND">Nota de Debito B</option>
+                  <option value="NC">Nota de Crédito A</option>
+                  <option value="NC">Nota de Crédito B</option>
+                  <option value="PX">Presupuesto X</option>
                 </select>
               </div>
               <div class="mb-3">
@@ -180,7 +184,7 @@ export class MovimientoListComponent implements OnInit {
 
   // Facturación
   factTarget: any = null;
-  factForm: any = { TipoComp: 'FA', PuntoVenta: 10, NumeroComp: '', Descuento: 0, lineIva: {} };
+  factForm: any = { TipoComp: 'FA', PuntoVenta: 15, NumeroComp: '', Descuento: 0, lineIva: {} };
   factDetalles: any[] = [];
   totals: any = { noGravado: 0, totalIva: 0, totalConIva: 0 };
 
