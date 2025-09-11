@@ -25,6 +25,15 @@ Definido en `src/app/inventario/recibo.model.ts` con interfaces `Recibo`, `Recib
 ### Estilos
 `recibo-detail.component.css` aplica layout responsive (grid y tarjetas). En impresión se ocultan controles.
 
+### Campos Fiscales (Backend)
+Los endpoints de recibos ahora devuelven además de `ClienteNombre` los campos:
+
+- `NombreRazonSocial`
+- `NombreFiscal`
+
+La lógica de presentación en el detalle prioriza: `NombreRazonSocial || NombreFiscal || ClienteNombre || 'ID ' + ClienteID`.
+En exports (CSV / PDF) se incluyen ambas columnas nuevas para facilitar conciliaciones externas.
+
 ## Development server
 
 Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
@@ -35,7 +44,30 @@ Run `ng build` to build the project. The build artifacts will be stored in the `
 
 ## Tests
 
-Run `ng test` to execute unit tests.
+Se usa el runner de Karma/Jasmine por defecto de Angular CLI.
+
+### Ejecutar
+`ng test` corre la suite en modo watch (según configuración). Para una sola corrida continua usar:
+
+```
+ng test --watch=false --code-coverage
+```
+
+### Cobertura
+El flag `--code-coverage` genera carpeta `coverage/` con reporte HTML (abrir `index.html`).
+
+### Pruebas agregadas (Recibos)
+- `recibo-detail.component.spec.ts`: Verifica la prioridad de presentación de nombre de cliente en el getter `recClienteDisplay`:
+  1. `NombreRazonSocial`
+  2. `NombreFiscal`
+  3. `ClienteNombre`
+  4. `ID <ClienteID>`
+  5. `N/D` final
+
+### Próximas sugerencias
+- Añadir pruebas de lógica de cálculo: Totales (Pagos, Aplicado, Diferencia) en el formulario.
+- Testear filtros y paginación de `ReciboFormComponent` (mock de datos de ventas).
+- Pruebas para endpoints backend con una capa e2e ligera (supertest o similar) fuera del scope actual.
 
 ## Further help
 

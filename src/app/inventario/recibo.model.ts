@@ -19,6 +19,8 @@ export interface Recibo {
   Fecha: string;
   ClienteID?: number;
   ClienteNombre?: string;
+  NombreRazonSocial?: string; // Razón Social completa del cliente
+  NombreFiscal?: string; // Nombre fiscal capturado manualmente en Nota de Pedido
   Observaciones?: string;
   Total?: number;
   TotalPagos?: number;

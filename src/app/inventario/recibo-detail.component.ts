@@ -43,4 +43,15 @@ export class ReciboDetailComponent implements OnInit {
     a.href = url; a.download = `recibo-${this.recibo.ReciboID}.json`; a.click();
     URL.revokeObjectURL(url);
   }
+
+  get recClienteDisplay(): string {
+    const r = this.recibo;
+    if(!r) return '';
+    return (
+      r.NombreRazonSocial ||
+      r.NombreFiscal ||
+      r.ClienteNombre ||
+      (r.ClienteID != null ? ('ID ' + r.ClienteID) : 'N/D')
+    );
+  }
 }

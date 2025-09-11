@@ -58,6 +58,22 @@ async function columnExists(table, column) {
     NombreRazonSocial TEXT
   );`);
 
+  // Migración: agregar columna NombreFiscal si no existe en clientes
+  try {
+    const ccols = await db.all("PRAGMA table_info('clientes')");
+    const cexisting = new Set((ccols||[]).map(c=>c.name));
+    if (!cexisting.has('NombreFiscal')) {
+      try {
+        await db.exec("ALTER TABLE clientes ADD COLUMN NombreFiscal TEXT;");
+        console.log('DB migration: agregada columna NombreFiscal a clientes');
+      } catch (err) {
+        console.warn('DB migration clientes: no se pudo agregar NombreFiscal', err && err.message);
+      }
+    }
+  } catch (err) {
+    console.warn('DB migration clientes: error verificando columnas', err && err.message);
+  }
+
   await db.exec(`CREATE TABLE IF NOT EXISTS datos_clientes (
     DatosID INTEGER PRIMARY KEY AUTOINCREMENT,
     ClienteID INTEGER,
@@ -2204,8 +2220,11 @@ app.get('/api/recibos/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: 'ID inválido' });
-    // Traer recibo + nombre cliente
-    const recibo = await db.get(`SELECT r.*, c.NombreRazonSocial as ClienteNombre
+    // Traer recibo + nombres cliente (razón social y fiscal)
+    const recibo = await db.get(`SELECT r.*, 
+        c.NombreRazonSocial as ClienteNombre, -- compatibilidad previa
+        c.NombreRazonSocial as NombreRazonSocial,
+        c.NombreFiscal as NombreFiscal
       FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID
       WHERE r.ReciboID = ?`, id);
     if (!recibo) return res.status(404).json({ ok: false, error: 'Recibo no encontrado' });
@@ -2309,14 +2328,17 @@ app.get('/api/recibos', async (req, res) => {
     if (cliente) whereClauses.push('r.ClienteID = ?'), params.push(cliente);
     if (fechaDesde) whereClauses.push('date(r.Fecha) >= date(?)'), params.push(fechaDesde);
     if (fechaHasta) whereClauses.push('date(r.Fecha) <= date(?)'), params.push(fechaHasta);
-    if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q);
+  if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR c.NombreFiscal LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q, q);
 
     const where = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
 
     const totalRow = await db.get(`SELECT COUNT(*) as cnt FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID ${where}`, params);
     const total = totalRow ? totalRow.cnt : 0;
 
-    const sql = `SELECT r.ReciboID, r.Fecha, r.ClienteID, r.Total, r.Observaciones, r.CreatedAt, c.NombreRazonSocial as ClienteNombre,
+    const sql = `SELECT r.ReciboID, r.Fecha, r.ClienteID, r.Total, r.Observaciones, r.CreatedAt,
+      c.NombreRazonSocial as ClienteNombre,
+      c.NombreRazonSocial as NombreRazonSocial,
+      c.NombreFiscal as NombreFiscal,
       IFNULL((SELECT SUM(Monto) FROM recibo_pagos rp WHERE rp.ReciboID = r.ReciboID), 0) as TotalPagos,
       IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas rv WHERE rv.ReciboID = r.ReciboID), 0) as TotalAplicado
       FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID
@@ -2344,18 +2366,22 @@ app.get('/api/recibos/export', async (req, res) => {
     if (cliente) whereClauses.push('r.ClienteID = ?'), params.push(cliente);
     if (fechaDesde) whereClauses.push('date(r.Fecha) >= date(?)'), params.push(fechaDesde);
     if (fechaHasta) whereClauses.push('date(r.Fecha) <= date(?)'), params.push(fechaHasta);
-    if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q);
+  if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR c.NombreFiscal LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q, q);
     const where = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
-    const rows = await db.all(`SELECT r.ReciboID, r.Fecha, c.NombreRazonSocial as ClienteNombre,
+    const rows = await db.all(`SELECT r.ReciboID, r.Fecha,
+      c.NombreRazonSocial as ClienteNombre,
+      c.NombreRazonSocial as NombreRazonSocial,
+      c.NombreFiscal as NombreFiscal,
       IFNULL((SELECT SUM(Monto) FROM recibo_pagos rp WHERE rp.ReciboID = r.ReciboID),0) as TotalPagos,
       IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas rv WHERE rv.ReciboID = r.ReciboID),0) as TotalAplicado,
       (IFNULL((SELECT SUM(Monto) FROM recibo_pagos rp WHERE rp.ReciboID = r.ReciboID),0) - IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas rv WHERE rv.ReciboID = r.ReciboID),0)) as Diferencia
       FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID ${where} ORDER BY r.ReciboID DESC`, params);
-    const headers = ['ReciboID','Fecha','Cliente','Pagos','Aplicado','Diferencia'];
+    const headers = ['ReciboID','Fecha','Cliente','NombreRazonSocial','NombreFiscal','Pagos','Aplicado','Diferencia'];
     const csvLines = [headers.join(',')];
     for (const r of rows) {
       const fecha = (r.Fecha||'').replace('T',' ').split(' ')[0];
-      const vals = [r.ReciboID, fecha, (r.ClienteNombre||'').replace(/,/g,' '), r.TotalPagos, r.TotalAplicado, r.Diferencia];
+      const vals = [r.ReciboID, fecha, (r.ClienteNombre||'').replace(/,/g,' '),
+        (r.NombreRazonSocial||'').replace(/,/g,' '), (r.NombreFiscal||'').replace(/,/g,' '), r.TotalPagos, r.TotalAplicado, r.Diferencia];
       csvLines.push(vals.join(','));
     }
     res.setHeader('Content-Type','text/csv; charset=utf-8');
@@ -2379,9 +2405,12 @@ app.get('/api/recibos/export/pdf', async (req, res) => {
     if (cliente) whereClauses.push('r.ClienteID = ?'), params.push(cliente);
     if (fechaDesde) whereClauses.push('date(r.Fecha) >= date(?)'), params.push(fechaDesde);
     if (fechaHasta) whereClauses.push('date(r.Fecha) <= date(?)'), params.push(fechaHasta);
-    if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q);
+  if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR c.NombreFiscal LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q, q);
     const where = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
-    const rows = await db.all(`SELECT r.ReciboID, r.Fecha, c.NombreRazonSocial as ClienteNombre,
+    const rows = await db.all(`SELECT r.ReciboID, r.Fecha,
+      c.NombreRazonSocial as ClienteNombre,
+      c.NombreRazonSocial as NombreRazonSocial,
+      c.NombreFiscal as NombreFiscal,
       IFNULL((SELECT SUM(Monto) FROM recibo_pagos rp WHERE rp.ReciboID = r.ReciboID),0) as TotalPagos,
       IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas rv WHERE rv.ReciboID = r.ReciboID),0) as TotalAplicado,
       (IFNULL((SELECT SUM(Monto) FROM recibo_pagos rp WHERE rp.ReciboID = r.ReciboID),0) - IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas rv WHERE rv.ReciboID = r.ReciboID),0)) as Diferencia
