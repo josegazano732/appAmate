@@ -1,0 +1,28 @@
+.ventas-list.card { background: linear-gradient(180deg,#ffffff,#fbfdff); border: 1px solid #e0e6ef; border-radius: 8px; padding: 14px; box-shadow: 0 6px 18px rgba(18,38,63,0.06); }
+.card-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.title{ margin:0; font-size:1.15rem; color:#12263f; font-weight:600 }
+.actions .btn{ margin-left:8px; }
+.filters{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.f-input{ padding:8px 10px; border:1px solid #e3e8f0; border-radius:6px; min-width:120px; background:#fff }
+.filters.compact .help{ color:#666; font-size:0.85rem; margin-left:8px; align-self:center }
+.filter-row input.f-input.small, .filter-row select.f-input.small{ padding:6px 8px; border-radius:6px; border:1px solid #e9eef7; font-size:0.95rem; min-width:72px; }
+.filter-row th{ background:#fff; padding:8px 10px; border-bottom:1px solid #eef3fb }
+.filter-row { background: #fcfdff }
+.table-wrap{ overflow:auto; max-height:520px; border-top:1px solid #eef3fb; }
+.badge { display:inline-block; padding:4px 8px; border-radius:12px; background:#eef6ff; color:#0b5ed7; font-weight:600; font-size:0.85rem }
+.col-small{ width:80px; }
+.col-medium{ width:140px }
+.truncate{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.table{ width:100%; border-collapse:collapse; margin:0; }
+.table thead th{ position:sticky; top:0; background:linear-gradient(180deg,#f8fbff,#ffffff); padding:10px 12px; text-align:left; border-bottom:1px solid #eef3fb; color:#0f2240; font-weight:600 }
+.table tbody td{ padding:12px; border-bottom:1px solid #f6f9ff; color:#16324a }
+.text-right{ text-align:right; }
+.bold{ font-weight:600; }
+.link{ color:#0b5ed7; text-decoration:none }
+.link:hover{ text-decoration:underline; }
+.pager{ display:flex; align-items:center; justify-content:space-between; margin-top:12px; }
+.btn{ padding:8px 12px; border-radius:6px; border:1px solid #d7e2f4; background:#fff; cursor:pointer; color:#0f2240 }
+.btn.primary{ background:#0b5ed7; color:#fff; border-color:#0b5ed7; box-shadow:0 6px 12px rgba(11,94,215,0.12) }
+.btn[disabled]{ opacity:0.5; cursor:not-allowed }
+.no-data{ text-align:center; padding:18px; color:#777 }
+@media (max-width:920px){ .filters{ flex-direction:column; } .f-input{ width:100%; } .table-wrap{ max-height:420px } }

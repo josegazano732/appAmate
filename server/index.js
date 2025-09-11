@@ -1790,14 +1790,69 @@ app.get('/api/ventas/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ ok: false, error: 'ID inválido' });
-    const venta = await db.get('SELECT * FROM ventas WHERE VentaID = ?', id);
+    // Primero intentar por VentaID
+    let venta = await db.get('SELECT * FROM ventas WHERE VentaID = ?', id);
+    // Si no existe, intentar buscar por NotaPedidoID (compatibilidad: frontend a veces pasa NotaPedidoID)
+    if (!venta) {
+      venta = await db.get('SELECT * FROM ventas WHERE NotaPedidoID = ? LIMIT 1', id);
+      if (venta) console.log(`GET /api/ventas/:id - fallback: encontrado VentaID ${venta.VentaID} para NotaPedidoID ${id}`);
+    }
     if (!venta) return res.status(404).json({ ok: false, error: 'Venta no encontrada' });
-    const detalles = await db.all('SELECT * FROM venta_detalle WHERE VentaID = ? ORDER BY VentaDetalleID ASC', id);
+  const detalles = await db.all('SELECT * FROM venta_detalle WHERE VentaID = ? ORDER BY VentaDetalleID ASC', venta.VentaID);
     // devolver la venta incluyendo un array 'detalles' para compatibilidad con el frontend
     venta.detalles = detalles || [];
     res.json(venta);
   } catch (err) {
     console.error('Error GET /api/ventas/:id', err && (err.stack || err.message || err));
+    res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Listado de ventas (paginado, búsqueda simple)
+app.get('/api/ventas', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    const q = req.query.q ? `%${req.query.q}%` : null;
+    const fechaDesde = req.query.fechaDesde || null;
+    const fechaHasta = req.query.fechaHasta || null;
+    const tipo = req.query.tipo || null;
+  const numero = req.query.numero ? `%${req.query.numero}%` : null;
+  const punto = req.query.punto ? `%${req.query.punto}%` : null;
+  const cliente = req.query.cliente ? `%${req.query.cliente}%` : null;
+  const subtotalMin = (req.query.subtotalMin || req.query.subtotalmin) ? Number(req.query.subtotalMin || req.query.subtotalmin) : null;
+  const totalMin = req.query.totalMin ? Number(req.query.totalMin) : null;
+  const totalMax = req.query.totalMax ? Number(req.query.totalMax) : null;
+
+    let whereClauses = [];
+    const params = [];
+    if (q) whereClauses.push('(v.NumeroComp LIKE ? OR c.NombreRazonSocial LIKE ?)') , params.push(q, q);
+    if (fechaDesde) whereClauses.push('date(v.FechaComp) >= date(?)') , params.push(fechaDesde);
+  // single date filter; fechaHasta removed
+  if (tipo) whereClauses.push('v.TipoComp = ?') , params.push(tipo);
+  if (numero) whereClauses.push('v.NumeroComp LIKE ?') , params.push(numero);
+  if (punto) whereClauses.push('v.PuntoVenta LIKE ?') , params.push(punto);
+    if (cliente) whereClauses.push('c.NombreRazonSocial LIKE ?') , params.push(cliente);
+  if (subtotalMin !== null) whereClauses.push('v.Subtotal >= ?') , params.push(subtotalMin);
+  // subtotalMax removed: single subtotalMin filter supported
+  if (totalMin !== null) whereClauses.push('v.Total >= ?') , params.push(totalMin);
+  if (totalMax !== null) whereClauses.push('v.Total <= ?') , params.push(totalMax);
+
+    const where = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
+
+    const totalRow = await db.get(`SELECT COUNT(*) as cnt FROM ventas v LEFT JOIN clientes c ON c.ClienteID = v.ClienteID ${where}`, params);
+    const total = totalRow ? totalRow.cnt : 0;
+
+  const sql = `SELECT v.VentaID, v.FechaComp, v.TipoComp, v.NumeroComp, v.PuntoVenta, v.Subtotal, (v.Total - v.Subtotal) as IVA, v.Total, v.NotaPedidoID, c.NombreRazonSocial as ClienteNombre
+      FROM ventas v LEFT JOIN clientes c ON c.ClienteID = v.ClienteID
+      ${where}
+      ORDER BY v.VentaID DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+
+    const items = await db.all(sql, params);
+    res.json({ items, total, limit, offset });
+  } catch (err) {
+    console.error('Error GET /api/ventas', err && (err.stack || err.message || err));
     res.status(500).json({ ok: false, error: err.message || err });
   }
 });

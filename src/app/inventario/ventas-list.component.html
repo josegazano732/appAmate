@@ -1,0 +1,79 @@
+<div class="ventas-list card">
+  <header class="card-header">
+    <h3 class="title">Facturas registradas</h3>
+    <div class="actions">
+      <button class="btn primary" (click)="clearFilters()">Limpiar</button>
+      <button class="btn" (click)="load()">Buscar</button>
+    </div>
+  </header>
+
+  <section class="filters compact">
+    <input class="f-input" placeholder="Buscar global" [(ngModel)]="q" (ngModelChange)="onFilterChange()" />
+    <div class="help">Filtra por columna usando los campos debajo de los encabezados.</div>
+  </section>
+
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th class="col-medium">Fecha</th>
+          <th class="col-small">Tipo</th>
+          <th class="col-small">Punto</th>
+          <th class="col-small">Nro</th>
+          <th>Cliente</th>
+          <th class="text-right col-medium">Subtotal</th>
+          <th class="text-right col-medium">IVA</th>
+          <th class="text-right col-medium">Total</th>
+        </tr>
+        <tr class="filter-row">
+          <th>
+            <input class="f-input small" type="date" [(ngModel)]="fechaDesde" (ngModelChange)="onFilterChange()" />
+          </th>
+          <th>
+            <select class="f-input small" [(ngModel)]="tipo" (ngModelChange)="onFilterChange()">
+              <option value="">Todos</option>
+              <option value="A">A</option>
+              <option value="FA">FA</option>
+            </select>
+          </th>
+          <th>
+            <input class="f-input small" placeholder="Pto" [(ngModel)]="punto" (ngModelChange)="onFilterChange()" />
+          </th>
+          <th>
+            <input class="f-input small" placeholder="Nro" [(ngModel)]="numero" (ngModelChange)="onFilterChange()" />
+          </th>
+          <th>
+            <input class="f-input" placeholder="Cliente" [(ngModel)]="cliente" (ngModelChange)="onFilterChange()" />
+          </th>
+          <th class="text-right">
+            <input class="f-input small" placeholder="Min" type="number" [(ngModel)]="subtotalMin" (ngModelChange)="onFilterChange()" />
+          </th>
+          <th class="text-right">
+            <input class="f-input small" placeholder="Min" type="number" [(ngModel)]="totalMin" (ngModelChange)="onFilterChange()" />
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let v of items">
+          <td>{{v.displayFecha}}</td>
+          <td>{{v.TipoComp}}</td>
+          <td><span class="badge">{{v.PuntoVenta}}</span></td>
+          <td><a class="link" [routerLink]="['/inventario/ventas', v.VentaID]">{{v.NumeroComp}}</a></td>
+          <td>{{v.ClienteNombre || v.NombreFiscal || 'N/D'}}</td>
+          <td class="text-right">{{v.Subtotal | number:'1.2-2'}}</td>
+          <td class="text-right">{{(v.IVA !== undefined ? v.IVA : (v.Total - v.Subtotal)) | number:'1.2-2'}}</td>
+          <td class="text-right bold">{{v.Total | number:'1.2-2'}}</td>
+        </tr>
+        <tr *ngIf="items.length===0"><td colspan="6" class="no-data">Sin facturas</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer class="pager">
+    <div class="pager-controls">
+      <button class="btn" (click)="pagePrev()" [disabled]="offset===0">Anterior</button>
+      <button class="btn" (click)="pageNext()" [disabled]="offset+limit>=total">Siguiente</button>
+    </div>
+    <div class="pager-info">Mostrando {{offset+1}} - {{endIndex}} de {{total}}</div>
+  </footer>
+</div>

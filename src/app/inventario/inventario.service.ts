@@ -38,6 +38,8 @@ export class InventarioService {
   facturarMovimiento(movimientoId:any, body:any) { return this.http.post<any>(`${this.api}/movimientos/${movimientoId}/facturar`, body); }
   // Ventas / facturas
   getVenta(id:any) { return this.http.get<any>(`${this.api}/ventas/${id}`); }
+  // Listado de ventas (paginado)
+  listVentas(params?: any) { return this.http.get<any>(`${this.api}/ventas`, { params: params || {} as any }); }
   // Variantes
   listVariantes(productoId:any){ return this.http.get<any[]>(`${this.api}/productos/${productoId}/variantes`); }
   createVariante(productoId:any, v:any){ return this.http.post(`${this.api}/productos/${productoId}/variantes`, v); }

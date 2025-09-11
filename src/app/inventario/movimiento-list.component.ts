@@ -7,7 +7,10 @@ import { ToastService } from '../shared/toast.service';
   template: `
     <div class="card mb-3"><div class="card-body">
       <h5>Movimientos</h5>
-      <div class="mb-2 text-end"><a class="btn btn-sm btn-primary" routerLink="/inventario/movimientos/new">Nuevo Movimiento</a></div>
+      <div class="mb-2 text-end">
+        <a class="btn btn-sm btn-primary me-1" routerLink="/inventario/movimientos/new">Nuevo Movimiento</a>
+        <a class="btn btn-sm btn-outline-secondary" routerLink="/inventario/ventas">Ver Facturas</a>
+      </div>
       <table class="table table-sm">
         <thead>
           <tr>
