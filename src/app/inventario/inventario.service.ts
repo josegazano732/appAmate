@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Recibo } from './recibo.model';
+import { catchError, throwError } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class InventarioService {
@@ -44,10 +45,22 @@ export class InventarioService {
   // Recibos
   createRecibo(payload: any) { return this.http.post<{ ok:boolean; ReciboID:number }>(`${this.api}/recibos`, payload); }
   getRecibo(id:any) { return this.http.get<Recibo>(`${this.api}/recibos/${id}`); }
-  listRecibos(params?: any) { return this.http.get<{ items: Recibo[]; total:number }>(`${this.api}/recibos`, { params: params || {} as any }); }
+  listRecibos(params?: any) {
+    return this.http.get<{ items: Recibo[]; total:number }>(`${this.api}/recibos`, { params: params || {} as any })
+      .pipe(
+        catchError(err => {
+          const msg = err?.error?.error || 'Fallo al cargar recibos';
+          return throwError(() => ({ ...err, message: msg }));
+        })
+      );
+  }
   // Variantes
   listVariantes(productoId:any){ return this.http.get<any[]>(`${this.api}/productos/${productoId}/variantes`); }
   createVariante(productoId:any, v:any){ return this.http.post(`${this.api}/productos/${productoId}/variantes`, v); }
   updateVariante(productoId:any, varianteId:any, v:any){ return this.http.put(`${this.api}/productos/${productoId}/variantes/${varianteId}`, v); }
   deleteVariante(productoId:any, varianteId:any){ return this.http.delete(`${this.api}/productos/${productoId}/variantes/${varianteId}`); }
+
+  recalcSaldosVentas(){
+    return this.http.post<{ok:boolean; updated:number}>(`${this.api}/ventas/recalc-saldos`, {});
+  }
 }

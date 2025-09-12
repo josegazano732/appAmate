@@ -50,6 +50,59 @@ async function columnExists(table, column) {
   });
 
   // ...existing code...
+  // --- Parametrización: Bancos y Medios de Pago ---
+  try {
+    await db.exec(`CREATE TABLE IF NOT EXISTS payment_methods (
+      PaymentMethodID INTEGER PRIMARY KEY AUTOINCREMENT,
+      Nombre TEXT,
+      Codigo TEXT,
+      Activo INTEGER DEFAULT 1,
+      RequiereBanco INTEGER DEFAULT 0,
+      RequiereDatos INTEGER DEFAULT 0,
+      CreatedAt TEXT
+    );`);
+    await db.exec(`CREATE TABLE IF NOT EXISTS banks (
+      BankID INTEGER PRIMARY KEY AUTOINCREMENT,
+      Nombre TEXT,
+      Codigo TEXT,
+      Activo INTEGER DEFAULT 1,
+      CreatedAt TEXT
+    );`);
+    // Alter recibo_pagos para nuevas columnas si no existen
+    try {
+      const rpCols = await db.all("PRAGMA table_info('recibo_pagos')");
+      const rpExisting = new Set((rpCols||[]).map(c=>c.name));
+      const alters = [];
+      if (!rpExisting.has('PaymentMethodID')) alters.push("ALTER TABLE recibo_pagos ADD COLUMN PaymentMethodID INTEGER;");
+      if (!rpExisting.has('BankID')) alters.push("ALTER TABLE recibo_pagos ADD COLUMN BankID INTEGER;");
+      for (const sql of alters) {
+        try { await db.exec(sql); console.log('DB migration: ejecutado ->', sql.trim()); } catch(e){ console.warn('DB migration recibo_pagos extra:', sql.trim(), e.message||e); }
+      }
+    } catch (e) { console.warn('No se pudieron verificar columnas de recibo_pagos', e.message||e); }
+    // Seed inicial de payment_methods si está vacío
+    try {
+      const countPM = await db.get('SELECT COUNT(*) as c FROM payment_methods');
+      if (countPM && countPM.c === 0) {
+        const now = new Date().toISOString().slice(0,19).replace('T',' ');
+        const seed = [
+          {Nombre:'Efectivo', Codigo:'EFECTIVO', RequiereBanco:0, RequiereDatos:0},
+          {Nombre:'Transferencia', Codigo:'TRANSFER', RequiereBanco:1, RequiereDatos:1},
+          {Nombre:'Cheque', Codigo:'CHEQUE', RequiereBanco:1, RequiereDatos:1},
+          {Nombre:'Echeq', Codigo:'ECHEQ', RequiereBanco:1, RequiereDatos:1},
+          {Nombre:'Retencion', Codigo:'RETENCION', RequiereBanco:0, RequiereDatos:1}
+        ];
+        const stmt = await db.prepare('INSERT INTO payment_methods (Nombre, Codigo, Activo, RequiereBanco, RequiereDatos, CreatedAt) VALUES (?, ?, ?, ?, ?, ?)');
+        try {
+          for (const s of seed) {
+            await stmt.run(s.Nombre, s.Codigo, 1, s.RequiereBanco?1:0, s.RequiereDatos?1:0, now);
+          }
+          console.log('Seed payment_methods insertado');
+        } finally { await stmt.finalize(); }
+      }
+    } catch(e){ console.warn('Seed payment_methods error', e.message||e); }
+  } catch (e) {
+    console.warn('Error creando tablas payment_methods/banks', e.message||e);
+  }
 
   await db.exec(`CREATE TABLE IF NOT EXISTS clientes (
     ClienteID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -441,6 +494,72 @@ app.put('/api/clientes/:id', async (req, res) => {
 app.delete('/api/clientes/:id', async (req, res) => {
   await db.run('DELETE FROM clientes WHERE ClienteID = ?', req.params.id);
   res.json({ ok: true });
+});
+
+// --- Payment Methods (lista / crear) ---
+app.get('/api/payment-methods', async (req, res) => {
+  try {
+    const includeInactive = req.query.includeInactive == '1' || req.query.includeInactive === 'true';
+    const rows = await db.all(`SELECT PaymentMethodID, Nombre, Codigo, Activo, RequiereBanco, RequiereDatos FROM payment_methods ${includeInactive? '':'WHERE Activo = 1'} ORDER BY Nombre ASC`);
+    res.json(rows);
+  } catch(e){ res.status(500).json({ ok:false, error: e.message||e }); }
+});
+app.post('/api/payment-methods', async (req, res) => {
+  try {
+    const { Nombre, Codigo, RequiereBanco, RequiereDatos, Activo } = req.body || {};
+    if (!Nombre) return res.status(400).json({ ok:false, error:'Nombre requerido' });
+    const now = new Date().toISOString().slice(0,19).replace('T',' ');
+    const r = await db.run('INSERT INTO payment_methods (Nombre, Codigo, Activo, RequiereBanco, RequiereDatos, CreatedAt) VALUES (?, ?, ?, ?, ?, ?)', Nombre, Codigo || null, (Activo===0?0:1), RequiereBanco?1:0, RequiereDatos?1:0, now);
+    res.json({ ok:true, PaymentMethodID: r.lastID });
+  } catch(e){ res.status(500).json({ ok:false, error: e.message||e }); }
+});
+
+app.patch('/api/payment-methods/:id', async (req, res) => {
+  try {
+  const { Nombre, Codigo, Activo, RequiereBanco, RequiereDatos } = req.body || {};
+  const fields = []; const params = [];
+    if (Nombre !== undefined) { fields.push('Nombre = ?'); params.push(Nombre); }
+    if (Codigo !== undefined) { fields.push('Codigo = ?'); params.push(Codigo); }
+    if (Activo !== undefined) { fields.push('Activo = ?'); params.push(Activo?1:0); }
+    if (RequiereBanco !== undefined) { fields.push('RequiereBanco = ?'); params.push(RequiereBanco?1:0); }
+    if (RequiereDatos !== undefined) { fields.push('RequiereDatos = ?'); params.push(RequiereDatos?1:0); }
+    if (!fields.length) return res.status(400).json({ ok:false, error:'Sin campos para actualizar' });
+    params.push(req.params.id);
+    await db.run(`UPDATE payment_methods SET ${fields.join(', ')} WHERE PaymentMethodID = ?`, params);
+    res.json({ ok:true });
+  } catch(e){ res.status(500).json({ ok:false, error: e.message||e }); }
+});
+
+// --- Banks (lista / crear) ---
+app.get('/api/banks', async (req, res) => {
+  try {
+    const includeInactive = req.query.includeInactive == '1' || req.query.includeInactive === 'true';
+    const rows = await db.all(`SELECT BankID, Nombre, Codigo, Activo FROM banks ${includeInactive? '':'WHERE Activo = 1'} ORDER BY Nombre ASC`);
+    res.json(rows);
+  } catch(e){ res.status(500).json({ ok:false, error: e.message||e }); }
+});
+app.post('/api/banks', async (req, res) => {
+  try {
+    const { Nombre, Codigo, Activo } = req.body || {};
+    if (!Nombre) return res.status(400).json({ ok:false, error:'Nombre requerido' });
+    const now = new Date().toISOString().slice(0,19).replace('T',' ');
+    const r = await db.run('INSERT INTO banks (Nombre, Codigo, Activo, CreatedAt) VALUES (?, ?, ?, ?)', Nombre, Codigo || null, (Activo===0?0:1), now);
+    res.json({ ok:true, BankID: r.lastID });
+  } catch(e){ res.status(500).json({ ok:false, error: e.message||e }); }
+});
+
+app.patch('/api/banks/:id', async (req, res) => {
+  try {
+  const { Nombre, Codigo, Activo } = req.body || {};
+  const fields = []; const params = [];
+    if (Nombre !== undefined) { fields.push('Nombre = ?'); params.push(Nombre); }
+    if (Codigo !== undefined) { fields.push('Codigo = ?'); params.push(Codigo); }
+    if (Activo !== undefined) { fields.push('Activo = ?'); params.push(Activo?1:0); }
+    if (!fields.length) return res.status(400).json({ ok:false, error:'Sin campos para actualizar' });
+    params.push(req.params.id);
+    await db.run(`UPDATE banks SET ${fields.join(', ')} WHERE BankID = ?`, params);
+    res.json({ ok:true });
+  } catch(e){ res.status(500).json({ ok:false, error: e.message||e }); }
 });
 
 // CRUD DatosClientes
@@ -906,7 +1025,9 @@ app.post('/api/movimientos/:id/revert', async (req, res) => {
 // Productos
 app.get('/api/productos', async (req, res) => {
   try {
-    const q = req.query.q ? `%${req.query.q}%` : null;
+  const q = req.query.q ? `%${req.query.q}%` : null;
+  const paymentMethodId = req.query.paymentMethodId ? Number(req.query.paymentMethodId) : null;
+  const bankId = req.query.bankId ? Number(req.query.bankId) : null;
     let sql = 'SELECT * FROM productos';
     const params = [];
     if (q) {
@@ -1880,7 +2001,8 @@ app.get('/api/ventas', async (req, res) => {
     // Si se pide saldoOnly, añadir la cláusula correspondiente usando IFNULL(Saldo, Total) sólo si la columna existe
     if (saldoOnly) {
       if (hasSaldo) {
-        whereClauses.push('IFNULL(v.Saldo, v.Total) > 0');
+        // Considerar residuales menores a 0.01 como cero
+        whereClauses.push('ABS(IFNULL(v.Saldo, v.Total)) > 0.01');
       } else {
         whereClauses.push('v.Total > 0');
       }
@@ -1917,6 +2039,32 @@ app.get('/api/ventas', async (req, res) => {
   } catch (err) {
     console.error('Error GET /api/ventas', err && (err.stack || err.message || err));
     res.status(500).json({ ok: false, error: err.message || err });
+  }
+});
+
+// Recalcular saldos de todas las ventas en base a aplicaciones (recibo_ventas)
+// POST /api/ventas/recalc-saldos  -> { ok:true, updated: n }
+app.post('/api/ventas/recalc-saldos', async (req, res) => {
+  try {
+    // Verificar que exista columna Saldo
+    const hasSaldo = await columnExists('ventas','Saldo');
+    if (!hasSaldo) return res.status(400).json({ ok:false, error:'Columna Saldo no existe' });
+    await db.exec('BEGIN TRANSACTION');
+    try {
+      // Recalcular en bloque: Saldo = Total - SUM(aplicado)
+      await db.exec(`UPDATE ventas
+        SET Saldo = ROUND(Total - IFNULL((SELECT SUM(ImporteAplicado) FROM recibo_ventas rv WHERE rv.VentaID = ventas.VentaID),0), 2);`);
+      // Normalizar residuales pequeños
+      const result = await db.run(`UPDATE ventas SET Saldo = 0 WHERE ABS(Saldo) < 0.01`);
+      await db.exec('COMMIT');
+      res.json({ ok:true, updated: result.changes || 0 });
+    } catch(err){
+      await db.exec('ROLLBACK');
+      throw err;
+    }
+  } catch(err){
+    console.error('Error POST /api/ventas/recalc-saldos', err && (err.stack||err.message||err));
+    res.status(500).json({ ok:false, error: err.message || err });
   }
 });
 
@@ -2113,6 +2261,22 @@ try {
     FOREIGN KEY (ReciboID) REFERENCES recibos(ReciboID)
   );`);
 
+  // Migración en caliente: agregar columnas PaymentMethodID y BankID si faltan (se usan para enlazar métodos de pago y bancos)
+  try {
+    const rpCols = await db.all("PRAGMA table_info('recibo_pagos')");
+    const rpExisting = new Set((rpCols||[]).map(c=>c.name));
+    if (!rpExisting.has('PaymentMethodID')) {
+      await db.exec('ALTER TABLE recibo_pagos ADD COLUMN PaymentMethodID INTEGER;');
+      console.log('DB migration: columna PaymentMethodID agregada a recibo_pagos');
+    }
+    if (!rpExisting.has('BankID')) {
+      await db.exec('ALTER TABLE recibo_pagos ADD COLUMN BankID INTEGER;');
+      console.log('DB migration: columna BankID agregada a recibo_pagos');
+    }
+  } catch (migErr) {
+    console.warn('DB migration recibo_pagos: no se pudieron agregar columnas PaymentMethodID/BankID', migErr && migErr.message);
+  }
+
   await db.exec(`CREATE TABLE IF NOT EXISTS recibo_ventas (
     ReciboVentaID INTEGER PRIMARY KEY AUTOINCREMENT,
     ReciboID INTEGER,
@@ -2134,6 +2298,12 @@ try {
     } catch (err) {
       console.warn('DB migration recibos: no se pudo agregar columna Saldo', err && err.message);
     }
+  }
+  // Normalización: considerar residuales pequeños como 0
+  try {
+    await db.exec('UPDATE ventas SET Saldo = 0 WHERE ABS(Saldo) < 0.01');
+  } catch(normErr){
+    console.warn('Normalización de saldos: no se pudo ajustar residuales', normErr && normErr.message);
   }
 } catch (err) {
   console.warn('DB migration recibos: error al crear tablas/columnas', err && err.message);
@@ -2180,13 +2350,23 @@ app.post('/api/recibos', async (req, res) => {
       const reciboId = ins.lastID;
 
       // Insertar pagos
-      const stmtPago = await db.prepare('INSERT INTO recibo_pagos (ReciboID, TipoPago, Monto, Datos) VALUES (?, ?, ?, ?)');
+      const stmtPago = await db.prepare('INSERT INTO recibo_pagos (ReciboID, TipoPago, Monto, Datos, PaymentMethodID, BankID) VALUES (?, ?, ?, ?, ?, ?)');
       try {
         for (const p of pagosArr) {
-          const tipo = p.TipoPago || p.tipo || 'Desconocido';
+          let tipo = p.TipoPago || p.tipo || null;
+          let paymentMethodId = p.PaymentMethodID || p.paymentMethodId || null;
+          let bankId = p.BankID || p.bankId || null;
+          // Si viene PaymentMethodID pero no TipoPago textual, resolver nombre
+          if (paymentMethodId && !tipo) {
+            try {
+              const row = await db.get('SELECT Nombre FROM payment_methods WHERE PaymentMethodID = ?', paymentMethodId);
+              if (row && row.Nombre) tipo = row.Nombre;
+            } catch(e){ /* ignore */ }
+          }
+          if (!tipo) tipo = 'Desconocido';
           const monto = Number(p.Monto || 0);
           const datos = p.Datos ? JSON.stringify(p.Datos) : (p.DatosText || null);
-          await stmtPago.run(reciboId, tipo, monto, datos);
+          await stmtPago.run(reciboId, tipo, monto, datos, paymentMethodId, bankId);
         }
       } finally { await stmtPago.finalize(); }
 
@@ -2198,7 +2378,8 @@ app.post('/api/recibos', async (req, res) => {
           const imp = Number(a.ImporteAplicado || 0);
           await stmtAplic.run(reciboId, ventaId, imp);
           // Restar del Saldo actual, asegurar que no quede negativo y manejar Saldo nulo usando Total
-          await db.run('UPDATE ventas SET Saldo = MAX(0, IFNULL(Saldo, Total) - ?) WHERE VentaID = ?', imp, ventaId);
+          // Restar y clamp + redondeo para evitar residuales por flotantes
+          await db.run('UPDATE ventas SET Saldo = MAX(0, ROUND(IFNULL(Saldo, Total) - ?, 2)) WHERE VentaID = ?', imp, ventaId);
         }
       } finally { await stmtAplic.finalize(); }
 
@@ -2228,7 +2409,12 @@ app.get('/api/recibos/:id', async (req, res) => {
       FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID
       WHERE r.ReciboID = ?`, id);
     if (!recibo) return res.status(404).json({ ok: false, error: 'Recibo no encontrado' });
-    const pagos = await db.all('SELECT TipoPago, Monto, Datos FROM recibo_pagos WHERE ReciboID = ? ORDER BY ReciboPagoID ASC', id);
+    const pagos = await db.all(`SELECT rp.TipoPago, rp.Monto, rp.Datos, rp.PaymentMethodID, rp.BankID,
+        pm.Nombre as MethodNombre, b.Nombre as BankNombre
+      FROM recibo_pagos rp
+      LEFT JOIN payment_methods pm ON pm.PaymentMethodID = rp.PaymentMethodID
+      LEFT JOIN banks b ON b.BankID = rp.BankID
+      WHERE rp.ReciboID = ? ORDER BY rp.ReciboPagoID ASC`, id);
     // Enriquecer aplicaciones con datos de la factura.
     // Nota: SaldoAnterior calculado de forma estimada: SaldoPosterior + ImporteAplicado. Si hubo recibos posteriores, esto puede diferir del saldo histórico real.
     const ventasAplic = await db.all(`SELECT rv.VentaID, v.NumeroComp as Numero, v.FechaComp, v.Total as TotalFactura,
@@ -2322,18 +2508,31 @@ app.get('/api/recibos', async (req, res) => {
     const fechaDesde = req.query.fechaDesde || null;
     const fechaHasta = req.query.fechaHasta || null;
     const q = req.query.q ? `%${req.query.q}%` : null;
+    const paymentMethodId = req.query.paymentMethodId ? Number(req.query.paymentMethodId) : null;
+    const bankId = req.query.bankId ? Number(req.query.bankId) : null;
 
     let whereClauses = [];
     const params = [];
     if (cliente) whereClauses.push('r.ClienteID = ?'), params.push(cliente);
     if (fechaDesde) whereClauses.push('date(r.Fecha) >= date(?)'), params.push(fechaDesde);
     if (fechaHasta) whereClauses.push('date(r.Fecha) <= date(?)'), params.push(fechaHasta);
-  if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR c.NombreFiscal LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q, q);
+    if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR c.NombreFiscal LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q, q);
+    if (paymentMethodId) {
+      whereClauses.push('EXISTS (SELECT 1 FROM recibo_pagos rp1 WHERE rp1.ReciboID = r.ReciboID AND rp1.PaymentMethodID = ?)');
+      params.push(paymentMethodId);
+    }
+    if (bankId) {
+      whereClauses.push('EXISTS (SELECT 1 FROM recibo_pagos rp2 WHERE rp2.ReciboID = r.ReciboID AND rp2.BankID = ?)');
+      params.push(bankId);
+    }
 
     const where = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
 
-    const totalRow = await db.get(`SELECT COUNT(*) as cnt FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID ${where}`, params);
-    const total = totalRow ? totalRow.cnt : 0;
+  const totalRow = await db.get(`SELECT COUNT(*) as cnt FROM recibos r LEFT JOIN clientes c ON c.ClienteID = r.ClienteID ${where}`, params);
+  const total = totalRow ? totalRow.cnt : 0;
+  // Total global sin filtros para referencia UX
+  const totalAllRow = await db.get(`SELECT COUNT(*) as cnt FROM recibos`);
+  const totalAll = totalAllRow ? totalAllRow.cnt : 0;
 
     const sql = `SELECT r.ReciboID, r.Fecha, r.ClienteID, r.Total, r.Observaciones, r.CreatedAt,
       c.NombreRazonSocial as ClienteNombre,
@@ -2346,8 +2545,8 @@ app.get('/api/recibos', async (req, res) => {
       ORDER BY r.ReciboID DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    const items = await db.all(sql, params);
-    res.json({ items, total, limit, offset });
+  const items = await db.all(sql, params);
+  res.json({ items, total, totalAll, limit, offset });
   } catch (err) {
     console.error('Error GET /api/recibos', err && (err.stack || err.message || err));
     res.status(500).json({ ok: false, error: err.message || err });
@@ -2361,12 +2560,22 @@ app.get('/api/recibos/export', async (req, res) => {
     const fechaHasta = req.query.fechaHasta || null;
     const q = req.query.q ? `%${req.query.q}%` : null;
     const cliente = req.query.cliente ? Number(req.query.cliente) : null;
+    const paymentMethodId = req.query.paymentMethodId ? Number(req.query.paymentMethodId) : null;
+    const bankId = req.query.bankId ? Number(req.query.bankId) : null;
     const whereClauses = [];
     const params = [];
     if (cliente) whereClauses.push('r.ClienteID = ?'), params.push(cliente);
     if (fechaDesde) whereClauses.push('date(r.Fecha) >= date(?)'), params.push(fechaDesde);
     if (fechaHasta) whereClauses.push('date(r.Fecha) <= date(?)'), params.push(fechaHasta);
-  if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR c.NombreFiscal LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q, q);
+    if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR c.NombreFiscal LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q, q);
+    if (paymentMethodId) {
+      whereClauses.push('EXISTS (SELECT 1 FROM recibo_pagos rp1 WHERE rp1.ReciboID = r.ReciboID AND rp1.PaymentMethodID = ?)');
+      params.push(paymentMethodId);
+    }
+    if (bankId) {
+      whereClauses.push('EXISTS (SELECT 1 FROM recibo_pagos rp2 WHERE rp2.ReciboID = r.ReciboID AND rp2.BankID = ?)');
+      params.push(bankId);
+    }
     const where = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
     const rows = await db.all(`SELECT r.ReciboID, r.Fecha,
       c.NombreRazonSocial as ClienteNombre,
@@ -2400,12 +2609,22 @@ app.get('/api/recibos/export/pdf', async (req, res) => {
     const fechaHasta = req.query.fechaHasta || null;
     const q = req.query.q ? `%${req.query.q}%` : null;
     const cliente = req.query.cliente ? Number(req.query.cliente) : null;
+    const paymentMethodId = req.query.paymentMethodId ? Number(req.query.paymentMethodId) : null;
+    const bankId = req.query.bankId ? Number(req.query.bankId) : null;
     const whereClauses = [];
     const params = [];
     if (cliente) whereClauses.push('r.ClienteID = ?'), params.push(cliente);
     if (fechaDesde) whereClauses.push('date(r.Fecha) >= date(?)'), params.push(fechaDesde);
     if (fechaHasta) whereClauses.push('date(r.Fecha) <= date(?)'), params.push(fechaHasta);
-  if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR c.NombreFiscal LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q, q);
+    if (q) whereClauses.push('(c.NombreRazonSocial LIKE ? OR c.NombreFiscal LIKE ? OR r.Observaciones LIKE ?)'), params.push(q, q, q);
+    if (paymentMethodId) {
+      whereClauses.push('EXISTS (SELECT 1 FROM recibo_pagos rp1 WHERE rp1.ReciboID = r.ReciboID AND rp1.PaymentMethodID = ?)');
+      params.push(paymentMethodId);
+    }
+    if (bankId) {
+      whereClauses.push('EXISTS (SELECT 1 FROM recibo_pagos rp2 WHERE rp2.ReciboID = r.ReciboID AND rp2.BankID = ?)');
+      params.push(bankId);
+    }
     const where = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
     const rows = await db.all(`SELECT r.ReciboID, r.Fecha,
       c.NombreRazonSocial as ClienteNombre,

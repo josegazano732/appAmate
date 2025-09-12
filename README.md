@@ -43,6 +43,7 @@ El listado fue modernizado para aportar trazabilidad y lectura rápida:
 - Modo compacto (toggle) que reduce paddings y densidad para alta volumetría de registros.
 - Acordeón de filtros avanzados (rango de fechas, diferencia, montos) con contador de filtros activos.
 - Presets de rango de fechas (Hoy, Últimos 7 días, Mes actual, Mes anterior, Año actual) para acelerar consultas frecuentes.
+- Filtros adicionales por Método de Pago y Banco (si corresponde) usando subconsultas EXISTS.
 - Accesibilidad: uso de `aria-label`, `aria-pressed`, foco visible consistente, tipografía tabular para importes.
 - Exportaciones directas: CSV / PDF / JSON con inclusión de campos fiscales.
 
@@ -129,6 +130,138 @@ Las acciones de exportación unifican los campos visibles del listado, añadiend
 | Fase 4 | Acordeón filtros avanzados + contador activo |
 | Fase 5 | Tokens globales / sistema de botones / refactor detalle |
 | Fase 6 | Refactor formulario a tokens + documentación |
+| Fase 7 | Parametrización de Métodos de Pago y Bancos |
+
+---
+
+## Parametrización de Métodos de Pago y Bancos
+
+Se incorporó un sistema flexible para administrar métodos de pago (`payment_methods`) y bancos (`banks`) que permite extender sin alterar el código del formulario.
+
+### Backend
+- Migraciones condicionales crean tablas:
+  - `payment_methods (PaymentMethodID, Nombre, Codigo, Activo, RequiereBanco, RequiereDatos, CreatedAt)`
+  - `banks (BankID, Nombre, Codigo, Activo, CreatedAt)`
+- Alter incremental de `recibo_pagos` agrega columnas `PaymentMethodID` y `BankID` (no rompe datos previos).
+- Seeds iniciales (ejemplo: Efectivo, Transferencia, Cheque, Echeq, Retencion) solo si la tabla está vacía.
+- Endpoints REST:
+  - `GET /api/payment-methods` (solo activos)
+  - `POST /api/payment-methods` (creación básica)
+  - `GET /api/banks`
+  - `POST /api/banks`
+- POST de recibos acepta ahora, por cada pago: `{ TipoPago, Monto, Datos, PaymentMethodID?, BankID? }`.
+  - Si se envía `PaymentMethodID` y no `TipoPago`, el backend resuelve `TipoPago` textual (compatibilidad retro para reportes que aún lean ese campo).
+  - El GET de recibo incluye `MethodNombre` y `BankNombre` vía `LEFT JOIN`.
+
+### Frontend
+- Nuevo servicio `ParametrosService` (`src/app/inventario/parametros.service.ts`).
+  - `listPaymentMethods()` / `createPaymentMethod()`
+  - `listBanks()` / `createBank()`
+- Nuevos componentes de administración:
+  - `PaymentMethodsComponent` en ruta `inventario/parametros/payment-methods`
+  - `BanksComponent` en ruta `inventario/parametros/banks`
+- Formulario de recibos:
+  - Reemplaza combo estático de tipos por select dinámico de métodos.
+  - Muestra select de banco únicamente si el método tiene `RequiereBanco=1`.
+  - Muestra input de `Datos` solo si `RequiereDatos=1`.
+  - Envía ambos campos ID al backend manteniendo `TipoPago` textual (para transiciones suaves).
+  - Enlace contextual (icono ⚙) junto al select de Banco para abrir administración de Bancos.
+  - Navbar principal incluye accesos directos a Bancos y Métodos de Pago.
+
+### Ventajas
+- Escalabilidad: agregar un nuevo método se limita a un POST.
+- Validaciones condicionales (banco / datos) centralizadas por flags.
+- Compatibilidad: vista y reportes que lean `TipoPago` no se rompen.
+
+### Estado Actual Extendido
+- Endpoints `PATCH /api/payment-methods/:id` y `PATCH /api/banks/:id` implementados para activar/desactivar y actualizar campos básicos.
+- Listados admiten `?includeInactive=1` para administración completa.
+- UI de administración incluye toggle de activación.
+- Formulario valida dinámicamente banco y datos requeridos antes de permitir guardar.
+
+### Próximos Pasos Sugeridos
+1. (COMPLETADO) Edición inline de nombre/código sin diálogo (implementado para Métodos de Pago y Bancos: inputs inline + botones Guardar/Cancelar con patch optimista).
+2. (COMPLETADO) Cache in-memory en servicio (invalidación al crear / patch / toggle activo).
+3. Migrar listados/reportes a `MethodNombre` y deprecar `TipoPago` textual a mediano plazo.
+4. (COMPLETADO) Filtros avanzados por método de pago / banco en listado de recibos.
+5. Pruebas unitarias para validación condicional de pagos.
+6. Mensajes toast unificados y accesibles (pendiente) / confirmaciones al desactivar.
+
+### Edición Inline (Administración)
+En los componentes de administración (`PaymentMethodsComponent` y `BanksComponent`):
+
+- Cada fila muestra botón "Editar" que activa modo inline sobre Nombre y Código.
+- En modo edición se renderizan `<input>` ligados a `editForm` y acciones `Guardar` / `Cancelar`.
+- Validación mínima: Nombre requerido (trim).
+- Guardado realiza `PATCH` y actualiza la fila local para feedback inmediato (optimista), además de invalidar cache.
+- Código puede establecerse a vacío (`null`) limpiando el valor.
+- Persisten los toggles de activación/desactivación sin interferir con el modo edición.
+
+Accesibilidad: Los botones mantienen etiquetas y el foco permanece en el flujo natural; puede añadirse manejo de tecla `Esc` como mejora futura para cancelar.
+
+### Alta de Bancos (UI y API)
+Para dar de alta (crear) un Banco:
+
+1. Navegar a `Inventario > Parámetros > Banks` (o ruta equivalente configurada en el router si existe un submenú de parámetros).
+2. Completar campo `Nombre` (obligatorio) y opcionalmente `Código`.
+3. Presionar `Agregar`. Se mostrará un toast de confirmación "Banco creado".
+4. El nuevo banco queda activo por defecto y disponible en selects cuando un Método de Pago requiera banco.
+
+Validaciones:
+- `Nombre` no puede ir vacío o solo espacios.
+- `Código` es opcional; si se deja vacío se guarda `null`.
+
+Edición / Activación:
+- Usar botón `Editar` para cambiar Nombre o Código inline y luego `Guardar`.
+- Botón `Desactivar` (o `Activar`) alterna el estado sin borrar el registro.
+
+#### Alta vía API (cURL)
+```bash
+curl -X POST http://localhost:3000/api/banks \
+  -H "Content-Type: application/json" \
+  -d '{"Nombre":"Banco Ejemplo","Codigo":"BEJ","Activo":1}'
+```
+Respuesta esperada:
+```json
+{ "ok": true, "BankID": 7 }
+```
+
+#### Atajos de Teclado
+- `Enter`: Guarda los cambios cuando el foco está en un campo editable.
+- `Escape`: Cancela la edición y restaura la vista anterior.
+- Auto‑focus: Al iniciar edición el campo Nombre recibe foco y selecciona el texto existente para reemplazo rápido.
+
+### Sistema de Toasts Accesibles
+Se agregó un sistema ligero de notificaciones:
+
+- Servicio: `ToastService` (`success`, `error`, `info`, `warning`).
+- Contenedor global: `<app-toast-container>` presente en `app.component.html`.
+- Accesibilidad: `aria-live="polite"`, `role="status"` en cada toast, botón de cierre con `aria-label`.
+- Auto‑dismiss configurable (timeout por defecto 3.5–5s según tipo); cierre manual disponible.
+- Variantes estilizadas reutilizando tokens de color (`success`, `error`, `info`, `warning`).
+
+Ejemplo de uso en un componente:
+```ts
+constructor(private toast: ToastService) {}
+onSave(){ this.toast.success('Guardado correctamente'); }
+onError(){ this.toast.error('Error al guardar'); }
+```
+
+### Ejemplo Payload Recibo con Parametrización
+```json
+{
+  "Fecha": "2024-06-01T10:30:00",
+  "ClienteID": 12,
+  "ventas": [ { "VentaID": 101, "ImporteAplicado": 2000 } ],
+  "pagos": [
+    { "PaymentMethodID": 1, "TipoPago": "Efectivo", "Monto": 1500 },
+    { "PaymentMethodID": 2, "TipoPago": "Transferencia", "BankID": 3, "Monto": 500, "Datos": "Ref 1234" }
+  ],
+  "Observaciones": "Pago mixto"
+}
+```
+
+---
 
 ---
 

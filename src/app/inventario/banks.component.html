@@ -1,0 +1,53 @@
+<div class="section-card card soft">
+  <h4>Bancos</h4>
+  <form (ngSubmit)="submit()" class="inline-fields" style="flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
+    <label>Nombre
+      <input [(ngModel)]="form.Nombre" name="Nombre" required placeholder="Ej: Banco Nación" />
+    </label>
+    <label>Código
+      <input [(ngModel)]="form.Codigo" name="Codigo" placeholder="Opcional" />
+    </label>
+    <button type="submit" class="btn primary sm" style="align-self:flex-end; height:34px;">Agregar</button>
+  </form>
+  <div *ngIf="error" class="status-msg error">{{error}}</div>
+  <div style="margin-bottom:.5rem; font-size:.7rem; display:flex; gap:1rem; align-items:center;">
+    <label style="display:flex; gap:.25rem; align-items:center;">
+      <input type="checkbox" [(ngModel)]="showInactive" (change)="load()"> Mostrar inactivos
+    </label>
+  </div>
+  <table class="table table-sm" *ngIf="items.length">
+    <thead><tr><th>ID</th><th>Nombre</th><th>Código</th><th>Activo</th><th></th><th></th></tr></thead>
+    <tbody>
+  <tr *ngFor="let b of items; trackBy: trackById" [class.inactive]="!b.Activo">
+        <td>{{b.BankID}}</td>
+        <td>
+          <ng-container *ngIf="editingId===b.BankID; else viewNombre">
+            <input #editBankNombreInput [(ngModel)]="editForm.Nombre" [ngModelOptions]="{standalone:true}" name="editNombre{{b.BankID}}" required (keydown)="onEditKey($event,b)" (click)="$event.stopPropagation()" />
+          </ng-container>
+          <ng-template #viewNombre>{{b.Nombre}}</ng-template>
+        </td>
+        <td>
+          <ng-container *ngIf="editingId===b.BankID; else viewCodigo">
+            <input [(ngModel)]="editForm.Codigo" [ngModelOptions]="{standalone:true}" name="editCodigo{{b.BankID}}" (keydown)="onEditKey($event,b)" (click)="$event.stopPropagation()" />
+          </ng-container>
+            <ng-template #viewCodigo>{{b.Codigo || '—'}}</ng-template>
+        </td>
+        <td>{{b.Activo? 'Sí':'No'}}</td>
+        <td>
+          <button type="button" class="mini-btn" (click)="toggleActivo(b)" [attr.aria-label]="b.Activo? 'Desactivar':'Activar'">{{b.Activo? 'Desactivar':'Activar'}}</button>
+        </td>
+        <td style="white-space:nowrap;">
+          <ng-container *ngIf="editingId===b.BankID; else editBtn">
+            <button type="button" class="mini-btn primary" (click)="saveEdit(b)">Guardar</button>
+            <button type="button" class="mini-btn" (click)="cancelEdit()">Cancelar</button>
+          </ng-container>
+          <ng-template #editBtn>
+            <button type="button" class="mini-btn" (click)="startEdit(b)">Editar</button>
+          </ng-template>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <div *ngIf="!items.length && !loading" class="text-muted small">Sin bancos aún.</div>
+  <div *ngIf="loading" class="text-muted small">Cargando...</div>
+</div>

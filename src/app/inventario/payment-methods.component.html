@@ -1,0 +1,69 @@
+<div class="section-card card soft">
+  <h4>Métodos de Pago</h4>
+  <form (ngSubmit)="submit()" class="inline-fields" style="flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
+    <label>Nombre
+      <input [(ngModel)]="form.Nombre" name="Nombre" required placeholder="Ej: Transferencia" />
+    </label>
+    <label>Código
+      <input [(ngModel)]="form.Codigo" name="Codigo" placeholder="Opcional" />
+    </label>
+    <label style="align-self:flex-end; padding-top:.95rem;">
+      <input type="checkbox" [(ngModel)]="form.RequiereBanco" name="RequiereBanco" /> Requiere Banco
+    </label>
+    <label style="align-self:flex-end; padding-top:.95rem;">
+      <input type="checkbox" [(ngModel)]="form.RequiereDatos" name="RequiereDatos" /> Requiere Datos
+    </label>
+    <button type="submit" class="btn primary sm" style="align-self:flex-end; height:34px;">Agregar</button>
+  </form>
+  <div *ngIf="error" class="status-msg error">{{error}}</div>
+  <div style="margin-bottom:.5rem; font-size:.7rem; display:flex; gap:1rem; align-items:center;">
+    <label style="display:flex; gap:.25rem; align-items:center;">
+      <input type="checkbox" [(ngModel)]="showInactive" (change)="load()"> Mostrar inactivos
+    </label>
+  </div>
+  <table class="table table-sm" *ngIf="items.length">
+    <thead><tr><th>ID</th><th>Nombre</th><th>Código</th><th>Banco?</th><th>Datos?</th><th>Activo</th><th style="min-width:130px"></th></tr></thead>
+    <tbody>
+  <tr *ngFor="let m of items; trackBy: trackById" [class.inactive]="!m.Activo">
+        <td>{{m.PaymentMethodID}}</td>
+        <td>
+          <ng-container *ngIf="editingId===m.PaymentMethodID; else viewNombre">
+            <input #editNombreInput [(ngModel)]="editForm.Nombre" [ngModelOptions]="{standalone:true}" class="f-input" style="width:100%;" (keydown)="onEditKey($event,m)" (click)="$event.stopPropagation()" />
+          </ng-container>
+          <ng-template #viewNombre>{{m.Nombre}}</ng-template>
+        </td>
+        <td>
+          <ng-container *ngIf="editingId===m.PaymentMethodID; else viewCodigo">
+            <input [(ngModel)]="editForm.Codigo" [ngModelOptions]="{standalone:true}" class="f-input" style="width:100%;" (keydown)="onEditKey($event,m)" (click)="$event.stopPropagation()" />
+          </ng-container>
+          <ng-template #viewCodigo>{{m.Codigo || '—'}}</ng-template>
+        </td>
+        <td>
+          <ng-container *ngIf="editingId===m.PaymentMethodID; else viewBanco">
+            <input type="checkbox" [(ngModel)]="editForm.RequiereBanco" [ngModelOptions]="{standalone:true}" (click)="$event.stopPropagation()" />
+          </ng-container>
+          <ng-template #viewBanco>{{m.RequiereBanco? 'Sí':'No'}}</ng-template>
+        </td>
+        <td>
+          <ng-container *ngIf="editingId===m.PaymentMethodID; else viewDatos">
+            <input type="checkbox" [(ngModel)]="editForm.RequiereDatos" [ngModelOptions]="{standalone:true}" (click)="$event.stopPropagation()" />
+          </ng-container>
+          <ng-template #viewDatos>{{m.RequiereDatos? 'Sí':'No'}}</ng-template>
+        </td>
+        <td>{{m.Activo? 'Sí':'No'}}</td>
+        <td style="display:flex; gap:.35rem; flex-wrap:wrap;">
+          <ng-container *ngIf="editingId===m.PaymentMethodID; else actionsView">
+            <button type="button" class="mini-btn primary" (click)="saveEdit(m)">Guardar</button>
+            <button type="button" class="mini-btn ghost" (click)="cancelEdit()">Cancelar</button>
+          </ng-container>
+          <ng-template #actionsView>
+            <button type="button" class="mini-btn" (click)="toggleActivo(m)" [attr.aria-label]="m.Activo? 'Desactivar':'Activar'">{{m.Activo? 'Desactivar':'Activar'}}</button>
+            <button type="button" class="mini-btn accent" (click)="startEdit(m)" aria-label="Editar">Editar</button>
+          </ng-template>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <div *ngIf="!items.length && !loading" class="text-muted small">Sin métodos aún.</div>
+  <div *ngIf="loading" class="text-muted small">Cargando...</div>
+</div>

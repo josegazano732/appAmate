@@ -16,6 +16,10 @@
         <input type="checkbox" [(ngModel)]="showOnlySaldo" (change)="toggleShowSaldo()" />
         <span>Solo con saldo</span>
       </label>
+      <button class="btn ghost" (click)="recalcSaldos()" [disabled]="recalculando" title="Recalcular saldos">
+        <span *ngIf="!recalculando">Recalc. saldos</span>
+        <span *ngIf="recalculando">Recalculando…</span>
+      </button>
       <button class="btn" (click)="load()">Refrescar</button>
       <button class="btn ghost" (click)="clearFilters()">Limpiar</button>
       <a class="btn primary" routerLink="/inventario/recibos/new">Nuevo Recibo</a>

@@ -19,6 +19,7 @@ export class ToastService {
   success(message: string, timeout = 3500) { return this.show(message, 'success', timeout); }
   error(message: string, timeout = 5000) { return this.show(message, 'error', timeout); }
   info(message: string, timeout = 4000) { return this.show(message, 'info', timeout); }
+  warning(message: string, timeout = 4500) { return this.show(message, 'warning', timeout); }
 
   remove(id: string) {
     this.toasts = this.toasts.filter(t => t.id !== id);

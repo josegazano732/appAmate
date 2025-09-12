@@ -1,7 +1,15 @@
 /* Variables globales movidas a styles.css */
 
 /* Card & Layout */
-.recibos-list.card{background:var(--c-bg);border:1px solid var(--c-border);border-radius:var(--rad-l);padding:18px;box-shadow:var(--c-shadow);display:flex;flex-direction:column;gap:14px}
+.recibos-list.card{background:var(--c-bg);border:1px solid var(--c-border);border-radius:var(--rad-l);padding:22px 24px 20px;box-shadow:var(--c-shadow);display:flex;flex-direction:column;gap:18px}
+/* Uniformidad: alinear bordes internos principales */
+.recibos-list.card .header,
+.recibos-list.card .sub-toolbar,
+.recibos-list.card .filters,
+.recibos-list.card .table-wrap,
+.recibos-list.card .pager{margin-left:0;margin-right:0}
+/* Ajustar filtros para que no se vea doble colchón visual con nuevo padding */
+.recibos-list.card .filters{margin-top:2px}
 .recibos-list .header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
 .recibos-list .title{margin:0;font-size:var(--fs-l);font-weight:600;color:var(--c-text);letter-spacing:.3px}
 .recibos-list .subtitle{font-size:var(--fs-ms);color:var(--c-text-sub);margin-top:2px;max-width:520px;line-height:1.15}

@@ -1,0 +1,6 @@
+.inline-fields label { display:flex; flex-direction:column; font-size:.75rem; gap:.25rem; }
+.table { width:100%; border-collapse:collapse; }
+.table th, .table td { padding:.35rem .5rem; border-bottom:1px solid var(--border-color,#ddd); font-size:.7rem; }
+.status-msg { font-size:.7rem; margin-bottom:.5rem; }
+.status-msg.error { color:#b30000; }
+.status-msg.success { color:#057d39; }

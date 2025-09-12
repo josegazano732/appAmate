@@ -112,21 +112,32 @@
   </div>
 
   <div class="section-card">
-    <h5>Pagos</h5>
+  <h5>Pagos <a routerLink="/inventario/parametros/payment-methods" class="small" style="margin-left:.5rem; font-weight:normal;">(gestionar parámetros)</a></h5>
     <div class="pagos-grid">
-      <div class="pago-row" *ngFor="let p of pagos; let i = index">
-        <select [(ngModel)]="p.TipoPago" aria-label="Tipo de pago" class="form-select form-select-sm">
-          <option>Efectivo</option>
-            <option>Transferencia</option>
-            <option>Cheques</option>
-            <option>Echeq Electronico</option>
-            <option>Certificado de Retencion</option>
+  <div class="pago-row" *ngFor="let p of pagos; let i = index" [class.has-error]="p._error">
+        <!-- Método de Pago dinámico -->
+        <select [(ngModel)]="p.PaymentMethodID" (ngModelChange)="p.TipoPago = (getPaymentMethod(p.PaymentMethodID)?.Nombre)||p.TipoPago" aria-label="Método de pago" class="form-select form-select-sm" [disabled]="pmLoading">
+          <option [ngValue]="null">— Método —</option>
+          <option *ngFor="let pm of paymentMethods" [ngValue]="pm.PaymentMethodID">{{pm.Nombre}}</option>
         </select>
+        <!-- Banco condicional -->
+        <ng-container *ngIf="getPaymentMethod(p.PaymentMethodID)?.RequiereBanco">
+          <div style="display:flex; gap:.35rem; align-items:center;">
+            <select [(ngModel)]="p.BankID" aria-label="Banco" class="form-select form-select-sm" [disabled]="banksLoading">
+              <option [ngValue]="null">— Banco —</option>
+              <option *ngFor="let b of banks" [ngValue]="b.BankID">{{b.Nombre}}</option>
+            </select>
+            <a routerLink="/inventario/parametros/banks" class="btn ghost xs" style="white-space:nowrap;" aria-label="Gestionar Bancos" title="Gestionar Bancos">⚙</a>
+          </div>
+        </ng-container>
         <input type="number" step="0.01" [(ngModel)]="p.Monto" aria-label="Monto del pago" class="form-control form-control-sm">
-        <input placeholder="Datos" [(ngModel)]="p.Datos" aria-label="Datos adicionales" class="form-control form-control-sm">
-  <button (click)="removePago(i)" class="btn danger sm" aria-label="Quitar pago">×</button>
+        <input *ngIf="getPaymentMethod(p.PaymentMethodID)?.RequiereDatos" placeholder="Datos" [(ngModel)]="p.Datos" aria-label="Datos adicionales" class="form-control form-control-sm">
+        <button (click)="removePago(i)" class="btn danger sm" aria-label="Quitar pago">×</button>
+        <div *ngIf="p._error" class="badge-error" style="font-size:.6rem;">{{p._error}}</div>
       </div>
-  <button (click)="addPago()" class="btn primary sm no-print" style="width:max-content">Agregar Pago</button>
+      <div *ngIf="!pagos.length" class="small text-muted" style="margin-bottom:.5rem">Aún no hay pagos cargados.</div>
+      <button (click)="addPago()" class="btn primary sm no-print" style="width:max-content">Agregar Pago</button>
+      <div class="small text-muted" style="margin-top:.5rem" *ngIf="pmLoading || banksLoading">Cargando parámetros...</div>
     </div>
   </div>
 
@@ -138,7 +149,7 @@
   <div class="section-card no-print card soft">
     <div class="actions-bar">
   <button type="button" class="btn ghost" (click)="resetForm()">Limpiar</button>
-  <button (click)="submit()" class="btn primary" [disabled]="!canSubmit">Guardar Recibo</button>
+  <button (click)="submit()" class="btn primary" [disabled]="!canSubmitAll">Guardar Recibo</button>
     </div>
   </div>
 </div>

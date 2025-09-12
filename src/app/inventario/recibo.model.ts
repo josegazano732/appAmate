@@ -2,6 +2,10 @@ export interface ReciboPago {
   TipoPago: string;
   Monto: number;
   Datos?: string | null;
+  PaymentMethodID?: number | null;
+  BankID?: number | null;
+  MethodNombre?: string; // Nombre del método asociado (si backend lo devuelve)
+  BankNombre?: string;   // Nombre del banco asociado
 }
 
 export interface ReciboVentaAplicada {

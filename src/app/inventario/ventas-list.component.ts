@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { InventarioService } from './inventario.service';
+import { ToastService } from '../shared/toast.service';
 
 @Component({
   selector: 'app-ventas-list',
@@ -25,6 +26,7 @@ export class VentasListComponent implements OnInit {
   // subtotalMax removed: single filter per column
   showOnlySaldo = false; // mostrar solo facturas con saldo pendiente
   loading = false;
+  recalculando = false;
   private _filterTimer: any = null;
 
   // agregados de la página
@@ -33,7 +35,7 @@ export class VentasListComponent implements OnInit {
   sumSaldo = 0;
   countPendientes = 0;
 
-  constructor(private svc: InventarioService) {}
+  constructor(private svc: InventarioService, private toast: ToastService) {}
 
   ngOnInit(): void { this.load(); }
 
@@ -162,5 +164,17 @@ export class VentasListComponent implements OnInit {
     if (this.showOnlySaldo) params.saldoOnly = '1';
     const query = Object.keys(params).map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`).join('&');
     window.open(`http://localhost:3000/api/ventas/export/pdf${query?('?'+query):''}`, '_blank');
+  }
+
+  async recalcSaldos(){
+    if (this.recalculando) return;
+    this.recalculando = true;
+    try {
+      const r = await this.svc.recalcSaldosVentas().toPromise();
+      this.toast.success('Saldos recalculados');
+      this.load();
+    } catch(e:any){
+      this.toast.error(e?.message || 'Error recalculando saldos');
+    } finally { this.recalculando = false; }
   }
 }

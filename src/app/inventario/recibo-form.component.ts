@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
 import { InventarioService } from './inventario.service';
+import { ParametrosService, PaymentMethod, Bank } from './parametros.service';
 
 @Component({
   selector: 'app-recibo-form',
@@ -21,13 +22,30 @@ export class ReciboFormComponent {
   selected: { VentaID:number, ImporteAplicado:number }[] = [];
   selectedMap: Record<number, { ImporteAplicado:number, error?:string }> = {};
   pagos: any[] = [];
+  paymentMethods: PaymentMethod[] = [];
+  banks: Bank[] = [];
+  pmLoading = false;
+  banksLoading = false;
   clienteId: any = null;
   fecha: string | null = null;
   observaciones = '';
   errorMessage: string | null = null;
   successMessage: string | null = null;
 
-  constructor(private svc: InventarioService) { this.loadVentas(); }
+  constructor(private svc: InventarioService, private params: ParametrosService) { this.loadVentas(); this.loadParams(); }
+
+  loadParams(){
+    this.pmLoading = true;
+    this.params.listPaymentMethods().subscribe({
+      next: rows => { this.paymentMethods = rows; this.pmLoading=false; },
+      error: err => { console.error('Error cargando métodos de pago', err); this.pmLoading=false; }
+    });
+    this.banksLoading = true;
+    this.params.listBanks().subscribe({
+      next: rows => { this.banks = rows; this.banksLoading=false; },
+      error: err => { console.error('Error cargando bancos', err); this.banksLoading=false; }
+    });
+  }
 
   get ventasFiltered(){
     return this.ventas.filter(v=>{
@@ -122,8 +140,22 @@ export class ReciboFormComponent {
     return it ? it.ImporteAplicado : 0;
   }
 
-  addPago() { this.pagos.push({ TipoPago: 'Efectivo', Monto: 0, Datos: null }); }
+  addPago() {
+    // Default al primer método disponible si existe
+    let defaultMethod: PaymentMethod | undefined = this.paymentMethods[0];
+    this.pagos.push({
+      TipoPago: defaultMethod ? defaultMethod.Nombre : 'Efectivo',
+      PaymentMethodID: defaultMethod ? defaultMethod.PaymentMethodID : null,
+      BankID: null,
+      Monto: 0,
+      Datos: null
+    });
+  }
   removePago(i:number) { this.pagos.splice(i,1); }
+
+  getPaymentMethod(id:any){
+    return this.paymentMethods.find(pm => pm.PaymentMethodID == id);
+  }
 
   // Helpers para totales y validación
   getTotalAplicado() {
@@ -132,6 +164,19 @@ export class ReciboFormComponent {
   getTotalPagos() { return this.pagos.reduce((s, p) => s + Number(p.Monto || 0), 0); }
   getDiferencia() { return this.getTotalPagos() - this.getTotalAplicado(); }
   get canSubmit() { return this.selected.length>0 && this.getTotalPagos() >= this.getTotalAplicado(); }
+  get pagosValid(){
+    let ok = true;
+    for (const p of this.pagos){
+      const pm = this.getPaymentMethod(p.PaymentMethodID);
+      p._error = null;
+      if(pm){
+        if(pm.RequiereBanco && !p.BankID){ p._error = 'Banco requerido'; ok=false; }
+        else if(pm.RequiereDatos && (!p.Datos || !String(p.Datos).trim())){ p._error = 'Datos requeridos'; ok=false; }
+      }
+    }
+    return ok;
+  }
+  get canSubmitAll(){ return this.canSubmit && this.pagosValid; }
 
   toggleSelectAll(checked:boolean) {
     if (checked) {
@@ -152,12 +197,19 @@ export class ReciboFormComponent {
     this.errorMessage = null;
     this.successMessage = null;
     if (!this.selected.length) { this.errorMessage = 'Seleccione al menos una factura'; return; }
-    if (!this.canSubmit) { this.errorMessage = 'Los pagos no cubren el total aplicado'; return; }
+  if (!this.canSubmit) { this.errorMessage = 'Los pagos no cubren el total aplicado'; return; }
+  if (!this.pagosValid) { this.errorMessage = 'Complete los datos requeridos en los pagos'; return; }
     const payload = {
       Fecha: this.fecha || undefined,
       ClienteID: this.clienteId || undefined,
       ventas: this.selected.map(s => ({ VentaID: s.VentaID, ImporteAplicado: Number(s.ImporteAplicado || 0) })),
-      pagos: this.pagos.map(p => ({ TipoPago: p.TipoPago, Monto: Number(p.Monto || 0), Datos: p.Datos })),
+      pagos: this.pagos.map(p => ({
+        TipoPago: p.TipoPago, // mantenemos textual para retrocompatibilidad
+        Monto: Number(p.Monto || 0),
+        Datos: p.Datos,
+        PaymentMethodID: p.PaymentMethodID || null,
+        BankID: p.BankID || null
+      })),
       Observaciones: this.observaciones || ''
     };
     try {

@@ -103,3 +103,13 @@ body {
 /* Tabla básica refinada (opcional uso global) */
 .table-sm th{font-size:var(--fs-s);text-transform:uppercase;letter-spacing:.5px}
 .table-sm td{font-size:var(--fs-m)}
+
+/* =====================================================
+	Toasts (Sistema de Notificaciones Ligero)
+	===================================================== */
+@keyframes toast-enter {0%{transform:translateY(-6px);opacity:0}100%{transform:translateY(0);opacity:1}}
+@keyframes toast-exit {0%{transform:translateY(0);opacity:1}100%{transform:translateY(-6px);opacity:0}}
+.app-toast-container{pointer-events:none}
+.app-toast{pointer-events:auto; animation:toast-enter .25s ease-out;}
+.app-toast.closing{animation:toast-exit .2s ease-in forwards}
+.app-toast .msg{flex:1;}

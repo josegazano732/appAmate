@@ -1,0 +1,21 @@
+.inline-fields label { display:flex; flex-direction:column; font-size:.75rem; gap:.25rem; }
+.table { width:100%; border-collapse:collapse; }
+.table th, .table td { padding:.35rem .5rem; border-bottom:1px solid var(--border-color,#ddd); font-size:.7rem; }
+.status-msg { font-size:.7rem; margin-bottom:.5rem; }
+.status-msg.error { color:#b30000; }
+.status-msg.success { color:#057d39; }
+/* Mini botones (alineados con payment methods) */
+.mini-btn{border:1px solid var(--c-border,#c8d0d8);background:#fff;font-size:.6rem;padding:.25rem .45rem;border-radius:4px;cursor:pointer;line-height:1;display:inline-flex;align-items:center;gap:.25rem;font-weight:500}
+.mini-btn.primary{background:var(--c-primary,#0b5ed7);color:#fff;border-color:var(--c-primary,#0b5ed7)}
+.mini-btn.accent{background:var(--c-accent2,#1285ff);color:#fff;border-color:var(--c-accent2,#1285ff)}
+.mini-btn.ghost{background:transparent;border-color:transparent;color:var(--c-primary,#0b5ed7)}
+.mini-btn:hover{background:#f2f7fb}
+.mini-btn.primary:hover,.mini-btn.accent:hover{filter:brightness(1.06)}
+.mini-btn:focus-visible{outline:2px solid #0b5ed766;outline-offset:1px}
+
+/* Evitar que una fila inactiva atenúe o bloquee la edición */
+tr.inactive input{opacity:1;pointer-events:auto}
+
+/* Inputs inline compactos */
+td input{font-size:.65rem;padding:.25rem .35rem;border:1px solid var(--c-border,#ccd3db);border-radius:4px;min-width:110px}
+td input:focus{outline:2px solid #0b5ed766;outline-offset:0}

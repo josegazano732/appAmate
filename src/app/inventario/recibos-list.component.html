@@ -1,8 +1,9 @@
-<div class="recibos-list card" role="region" aria-label="Listado de recibos" [class.compact]="compact">
+<div class="recibos-list card" role="region" aria-label="Listado de recibos" [class.compact]="compact" [attr.aria-busy]="loading ? 'true' : 'false'">
   <div class="header">
     <div class="title-block">
       <h3 class="title">Recibos</h3>
       <div class="subtitle">Cobros registrados con totales y diferencias aplicadas a facturas.</div>
+      <div *ngIf="totalAll!=null" class="meta">Total global: <strong>{{totalAll}}</strong></div>
     </div>
     <div class="actions primary-actions" aria-label="Acciones principales">
       <button class="btn ghost" (click)="exportCsv()" title="Exportar CSV" aria-label="Exportar CSV"><span class="icon">⇩</span><span class="lbl">CSV</span></button>
@@ -13,6 +14,12 @@
       </button>
     </div>
   </div>
+
+  <div class="sr-only" aria-live="polite">
+    <span *ngIf="stale">Mostrando datos en caché mientras reintenta la carga.</span>
+    <span *ngIf="loading">Cargando recibos…</span>
+  </div>
+
   <div class="sub-toolbar">
     <div class="stat-block">
       <div class="stat" aria-label="Total pagos vista">
@@ -39,7 +46,8 @@
         Filtros Fecha <span *ngIf="activeAdvancedCount" class="pill neg" style="margin-left:6px" aria-label="Filtros avanzados activos">{{activeAdvancedCount}}</span>
       </button>
       <button type="submit" class="btn primary sm" aria-label="Aplicar filtros">Aplicar</button>
-      <button *ngIf="q || fechaDesde || fechaHasta" type="button" class="btn ghost sm" (click)="clearFilters()" aria-label="Limpiar filtros">Limpiar</button>
+      <button *ngIf="q || fechaDesde || fechaHasta || paymentMethodId || bankId" type="button" class="btn ghost sm" (click)="clearFilters();" aria-label="Limpiar filtros">Limpiar</button>
+      <button *ngIf="fechaDesde || fechaHasta || paymentMethodId || bankId || activePreset" type="button" class="btn ghost sm" (click)="clearAdvanced()" aria-label="Limpiar filtros avanzados">Limpiar avanzados</button>
     </div>
     <div class="advanced" [class.open]="advancedOpen" id="advFilters" *ngIf="advancedOpen || fechaDesde || fechaHasta">
       <div class="adv-grid">
@@ -59,6 +67,22 @@
             <button type="button" class="btn ghost xs" *ngFor="let p of datePresets" (click)="applyDatePreset(p.key)" [class.active]="activePreset===p.key" [attr.aria-pressed]="activePreset===p.key">{{p.label}}</button>
           </div>
           <div class="quick-help" aria-hidden="true">Enter o Aplicar</div>
+        </div>
+        <div class="field">
+          <label>Método Pago
+            <select [(ngModel)]="paymentMethodId" name="paymentMethodId" (change)="onSearchChange()" class="f-input" aria-label="Filtrar por método de pago">
+              <option [ngValue]="null">(Todos)</option>
+              <option *ngFor="let pm of paymentMethods" [ngValue]="pm.PaymentMethodID">{{pm.Nombre}}</option>
+            </select>
+          </label>
+        </div>
+        <div class="field">
+          <label>Banco
+            <select [(ngModel)]="bankId" name="bankId" (change)="onSearchChange()" class="f-input" aria-label="Filtrar por banco" [disabled]="!paymentMethodId">
+              <option [ngValue]="null">(Todos)</option>
+              <option *ngFor="let b of banks" [ngValue]="b.BankID">{{b.Nombre}}</option>
+            </select>
+          </label>
         </div>
       </div>
     </div>
@@ -96,7 +120,19 @@
           </td>
           <td><a class="btn btn-sm link" [routerLink]="['/inventario/recibos', r.ReciboID]" title="Ver detalle">Ver</a></td>
         </tr>
-        <tr *ngIf="!items.length && !loading"><td colspan="7" class="no-data">Sin recibos</td></tr>
+        <tr *ngIf="errorMessage && !loading">
+          <td colspan="7" class="error-row">
+            <div class="err-msg">
+              <strong>Error:</strong> {{errorMessage}}
+              <button type="button" class="btn sm ghost" (click)="load()" [disabled]="loading">
+                <span *ngIf="loading">Reintentando…</span>
+                <span *ngIf="!loading">Reintentar</span>
+              </button>
+              <span *ngIf="stale" class="stale-note">Mostrando datos en caché</span>
+            </div>
+          </td>
+        </tr>
+        <tr *ngIf="!items.length && !loading && !errorMessage"><td colspan="7" class="no-data">Sin recibos</td></tr>
         <tr *ngIf="loading"><td colspan="7" class="loading">Cargando...</td></tr>
       </tbody>
       <tfoot *ngIf="items.length">
