@@ -1,5 +1,5 @@
 <div class="recibo-form-wrapper">
-  <div class="section-card header-bar">
+  <div class="section-card header-bar card soft">
     <div>
       <h4>Nuevo Recibo de Cobranza</h4>
       <div class="subtitle">Registra pagos y aplicación a facturas pendientes.</div>
@@ -11,7 +11,7 @@
     </div>
   </div>
 
-  <div class="section-card filters" [class.collapsed]="filtersCollapsed">
+  <div class="section-card filters card soft" [class.collapsed]="filtersCollapsed">
   <div class="filters-header" (click)="filtersCollapsed=!filtersCollapsed" role="button" tabindex="0" [attr.aria-expanded]="!filtersCollapsed">
       <strong>Filtros de Facturas</strong>
       <span class="caret" [class.rot]="!filtersCollapsed">▾</span>
@@ -35,20 +35,20 @@
       <label style="align-self:flex-end; padding-top:.95rem;">
         <input #selall type="checkbox" (change)="toggleSelectAll(selall.checked)" aria-label="Seleccionar todas las facturas"> Todas visibles
       </label>
-      <button class="btn btn-sm btn-outline-primary" style="height:34px; align-self:flex-end;" (click)="loadVentas()">Actualizar</button>
+  <button class="btn primary sm" style="height:34px; align-self:flex-end;" (click)="loadVentas()">Actualizar</button>
     </div>
     <div class="status-msg success" *ngIf="successMessage">{{successMessage}}</div>
     <div class="status-msg error" *ngIf="errorMessage">{{errorMessage}}</div>
   </div>
 
-  <div class="section-card">
+  <div class="section-card card soft">
   <h5>Facturas Pendientes</h5>
   <div class="help small">Marque las facturas y defina el importe a aplicar. Puede aplicar menos que el saldo para un pago parcial.</div>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; font-size:.75rem;">
       <div>Mostrando {{ventasPage.length}} de {{totalFiltered}} (página {{page}} / {{totalPages}})</div>
       <div style="display:flex; gap:.5rem; align-items:center;">
-        <button class="btn btn-sm btn-outline-secondary" (click)="prevPage()" [disabled]="page===1">«</button>
-        <button class="btn btn-sm btn-outline-secondary" (click)="nextPage()" [disabled]="page===totalPages">»</button>
+  <button class="btn ghost sm" (click)="prevPage()" [disabled]="page===1" aria-label="Página anterior">«</button>
+  <button class="btn ghost sm" (click)="nextPage()" [disabled]="page===totalPages" aria-label="Página siguiente">»</button>
         <select [(ngModel)]="pageSize" (change)="setPage(1)" aria-label="Tamaño de página" class="form-select form-select-sm" style="width:auto;">
           <option [ngValue]="10">10</option>
             <option [ngValue]="25">25</option>
@@ -92,7 +92,7 @@
     </div>
   </div>
 
-  <div class="section-card">
+  <div class="section-card card soft">
     <h5>Resumen</h5>
     <div class="resumen-grid">
       <div class="res-item">
@@ -124,21 +124,21 @@
         </select>
         <input type="number" step="0.01" [(ngModel)]="p.Monto" aria-label="Monto del pago" class="form-control form-control-sm">
         <input placeholder="Datos" [(ngModel)]="p.Datos" aria-label="Datos adicionales" class="form-control form-control-sm">
-        <button (click)="removePago(i)" class="btn btn-sm btn-outline-danger" aria-label="Quitar pago">×</button>
+  <button (click)="removePago(i)" class="btn danger sm" aria-label="Quitar pago">×</button>
       </div>
-      <button (click)="addPago()" class="btn btn-sm btn-outline-primary no-print" style="width:max-content">Agregar Pago</button>
+  <button (click)="addPago()" class="btn primary sm no-print" style="width:max-content">Agregar Pago</button>
     </div>
   </div>
 
-  <div class="section-card">
+  <div class="section-card card soft">
     <h5>Observaciones</h5>
     <textarea [(ngModel)]="observaciones" rows="3" aria-label="Observaciones" style="width:100%" placeholder="Notas internas o comentarios"></textarea>
   </div>
 
-  <div class="section-card no-print">
+  <div class="section-card no-print card soft">
     <div class="actions-bar">
-      <button type="button" class="btn btn-outline-secondary" (click)="resetForm()">Limpiar formulario</button>
-      <button (click)="submit()" class="btn btn-primary" [disabled]="!canSubmit">Guardar Recibo</button>
+  <button type="button" class="btn ghost" (click)="resetForm()">Limpiar</button>
+  <button (click)="submit()" class="btn primary" [disabled]="!canSubmit">Guardar Recibo</button>
     </div>
   </div>
 </div>

@@ -17,6 +17,8 @@ export class RecibosListComponent implements OnInit {
   // agregados UI
   aggregatePagos = 0;
   aggregateAplicado = 0;
+  compact = false;
+  advancedOpen = false; // acordeón filtros avanzados
 
   get page() { return Math.floor(this.offset / this.limit) + 1; }
   get totalPages() { return Math.max(1, Math.ceil(this.total / this.limit)); }
@@ -44,6 +46,8 @@ export class RecibosListComponent implements OnInit {
         } catch { it.displayFecha = it.Fecha; }
         it.ClienteDisplay = it.ClienteNombre || (it.ClienteID ? ('ID '+it.ClienteID) : 'Sin Cliente');
         it.Diferencia = +(Number(it.TotalPagos||0) - Number(it.TotalAplicado||0)).toFixed(2);
+        const base = Math.max(Number(it.TotalPagos||0), Number(it.TotalAplicado||0));
+        it._diffPct = base > 0 ? Math.min(100, Math.round(Math.abs(it.Diferencia) / base * 100)) : 0;
         return it;
       });
       this.total = r.total || 0;
@@ -79,5 +83,13 @@ export class RecibosListComponent implements OnInit {
     if (this.fechaHasta) params.fechaHasta = this.fechaHasta;
     const query = Object.keys(params).map(k=> `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`).join('&');
     window.open(`http://localhost:3000/api/recibos/export/pdf${query?('?' + query):''}`, '_blank');
+  }
+
+  abs(n:number){ return Math.abs(Number(n||0)); }
+
+  toggleCompact(){ this.compact = !this.compact; }
+  toggleAdvanced(){ this.advancedOpen = !this.advancedOpen; }
+  get activeAdvancedCount(){
+    let c=0; if(this.fechaDesde) c++; if(this.fechaHasta) c++; return c;
   }
 }

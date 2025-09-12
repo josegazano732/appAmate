@@ -1,12 +1,12 @@
 <div class="recibo-wrapper" *ngIf="!loading && recibo; else loadingTpl">
   <div class="toolbar no-print">
-    <a routerLink="/inventario/recibos" class="btn btn-sm btn-outline-secondary">Volver</a>
-    <button class="btn btn-sm btn-outline-primary" (click)="print()">Imprimir</button>
-    <button class="btn btn-sm btn-outline-success" (click)="exportJSON()">Exportar JSON</button>
-  <a class="btn btn-sm btn-outline-danger" *ngIf="recibo" [href]="'http://localhost:3000/api/recibos/' + recibo.ReciboID + '/export/pdf'" target="_blank">PDF</a>
+    <a routerLink="/inventario/recibos" class="btn ghost sm" aria-label="Volver al listado">← Volver</a>
+    <button class="btn subtle sm" (click)="print()" aria-label="Imprimir recibo">🖨️ <span class="lbl">Imprimir</span></button>
+    <button class="btn subtle sm" (click)="exportJSON()" aria-label="Exportar JSON">⇩ <span class="lbl">JSON</span></button>
+	<a class="btn accent sm" *ngIf="recibo" [href]="'http://localhost:3000/api/recibos/' + recibo.ReciboID + '/export/pdf'" target="_blank" aria-label="Exportar PDF">PDF</a>
   </div>
 
-  <div class="header card">
+  <div class="header card soft">
     <div>
       <h3>Recibo #{{recibo.ReciboID}}</h3>
 	  <div class="meta">Fecha: {{recibo.Fecha | date:'dd-MM-yyyy'}} · Cliente: {{recClienteDisplay}}
@@ -23,7 +23,7 @@
   </div>
 
   <div class="grid-two">
-    <section class="card">
+  <section class="card soft">
       <h5>Pagos</h5>
       <table class="table table-sm table-striped table-border">
         <thead><tr><th>Tipo</th><th>Monto</th><th>Datos</th></tr></thead>
@@ -37,7 +37,7 @@
         </tbody>
       </table>
     </section>
-    <section class="card">
+  <section class="card soft">
       <h5>Aplicación a Facturas</h5>
       <table class="table table-sm table-striped table-border">
         <thead><tr><th>Factura</th><th>Fecha</th><th>Total</th><th>Saldo Ant.</th><th>Aplicado</th><th>Saldo Post.</th></tr></thead>
@@ -56,13 +56,13 @@
     </section>
   </div>
 
-  <section class="card">
+  <section class="card soft">
     <h5>Observaciones</h5>
     <pre class="observaciones" *ngIf="recibo.Observaciones; else noObs">{{recibo.Observaciones}}</pre>
     <ng-template #noObs><div class="text-muted small">(Sin observaciones)</div></ng-template>
   </section>
 
-  <section class="card audit">
+  <section class="card soft audit">
     <h6>Auditoría</h6>
     <div class="audit-grid">
       <div><span class="lbl">Creado</span><span class="val">{{recibo.CreatedAt | date:'short'}}</span></div>

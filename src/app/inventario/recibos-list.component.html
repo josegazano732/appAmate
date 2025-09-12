@@ -1,30 +1,66 @@
-<div class="recibos-list card">
+<div class="recibos-list card" role="region" aria-label="Listado de recibos" [class.compact]="compact">
   <div class="header">
     <div class="title-block">
-      <h3>Recibos</h3>
-      <div class="subtitle">Listado de cobros registrados y su aplicación a facturas.</div>
+      <h3 class="title">Recibos</h3>
+      <div class="subtitle">Cobros registrados con totales y diferencias aplicadas a facturas.</div>
     </div>
-    <div class="actions">
-      <button class="btn ghost" (click)="exportCsv()" title="Exportar CSV">CSV</button>
-      <button class="btn ghost" (click)="exportPdf()" title="Exportar PDF">PDF</button>
-      <a class="btn primary accent" routerLink="/inventario/recibos/new" title="Cargar nuevo recibo">Nuevo Recibo</a>
+    <div class="actions primary-actions" aria-label="Acciones principales">
+      <button class="btn ghost" (click)="exportCsv()" title="Exportar CSV" aria-label="Exportar CSV"><span class="icon">⇩</span><span class="lbl">CSV</span></button>
+      <button class="btn ghost" (click)="exportPdf()" title="Exportar PDF" aria-label="Exportar PDF"><span class="icon">⧉</span><span class="lbl">PDF</span></button>
+      <a class="btn primary accent" routerLink="/inventario/recibos/new" title="Cargar nuevo recibo" aria-label="Nuevo recibo">Nuevo Recibo</a>
+      <button type="button" class="btn ghost subtle density-toggle" (click)="toggleCompact()" [attr.aria-pressed]="compact" title="Cambiar densidad" [attr.aria-label]="'Cambiar densidad (modo ' + (compact ? 'compacto' : 'amplio') + ')'">
+        <span class="icon">▤</span><span class="lbl">{{compact?'Amplio':'Compacto'}}</span>
+      </button>
+    </div>
+  </div>
+  <div class="sub-toolbar">
+    <div class="stat-block">
+      <div class="stat" aria-label="Total pagos vista">
+        <span class="stat-label">Pagos (vista)</span>
+        <span class="stat-value">{{aggregatePagos | number:'1.2-2'}}</span>
+      </div>
+      <div class="stat" aria-label="Total aplicado vista">
+        <span class="stat-label">Aplicado (vista)</span>
+        <span class="stat-value">{{aggregateAplicado | number:'1.2-2'}}</span>
+      </div>
+      <div class="stat" aria-label="Diferencia global vista" *ngIf="aggregatePagos || aggregateAplicado">
+        <span class="stat-label">Dif. (vista)</span>
+        <span class="stat-value" [class.zero]="aggregatePagos===aggregateAplicado" [class.neg]="aggregatePagos<aggregateAplicado" [class.pos]="aggregatePagos>aggregateAplicado">{{(aggregatePagos-aggregateAplicado)| number:'1.2-2'}}</span>
+      </div>
     </div>
   </div>
 
-  <div class="filters">
-    <input class="f-input" placeholder="Buscar (cliente u observaciones)" [(ngModel)]="q" (input)="onSearchChange()" />
-    <label class="f-inline">Desde <input type="date" [(ngModel)]="fechaDesde" (change)="onSearchChange()" /></label>
-    <label class="f-inline">Hasta <input type="date" [(ngModel)]="fechaHasta" (change)="onSearchChange()" /></label>
-  <button class="btn ghost" (click)="clearFilters()" *ngIf="q || fechaDesde || fechaHasta">Limpiar</button>
-    <div class="spacer"></div>
-    <div class="mini-stats">
-      <div><span class="lbl">Pagos (vista)</span><span class="val">{{aggregatePagos | number:'1.2-2'}}</span></div>
-      <div><span class="lbl">Aplicado (vista)</span><span class="val">{{aggregateAplicado | number:'1.2-2'}}</span></div>
+  <form class="filters" (submit)="onSearchChange(); $event.preventDefault();" aria-label="Filtros de búsqueda">
+    <div class="field grow">
+      <input class="f-input" placeholder="Buscar (cliente / observaciones)" [(ngModel)]="q" name="q" (input)="onSearchChange()" aria-label="Texto de búsqueda" />
     </div>
-  </div>
+    <div class="field actions-inline basic-actions">
+      <button type="button" class="btn subtle sm" (click)="toggleAdvanced()" [attr.aria-expanded]="advancedOpen" aria-controls="advFilters">
+        Filtros Fecha <span *ngIf="activeAdvancedCount" class="pill neg" style="margin-left:6px" aria-label="Filtros avanzados activos">{{activeAdvancedCount}}</span>
+      </button>
+      <button type="submit" class="btn primary sm" aria-label="Aplicar filtros">Aplicar</button>
+      <button *ngIf="q || fechaDesde || fechaHasta" type="button" class="btn ghost sm" (click)="clearFilters()" aria-label="Limpiar filtros">Limpiar</button>
+    </div>
+    <div class="advanced" [class.open]="advancedOpen" id="advFilters" *ngIf="advancedOpen || fechaDesde || fechaHasta">
+      <div class="adv-grid">
+        <div class="field">
+          <label>Desde
+            <input type="date" [(ngModel)]="fechaDesde" name="fechaDesde" (change)="onSearchChange()" aria-label="Fecha desde" />
+          </label>
+        </div>
+        <div class="field">
+          <label>Hasta
+            <input type="date" [(ngModel)]="fechaHasta" name="fechaHasta" (change)="onSearchChange()" aria-label="Fecha hasta" />
+          </label>
+        </div>
+        <div class="quick-help" aria-hidden="true">Enter o Aplicar</div>
+      </div>
+    </div>
+  </form>
 
   <div class="table-wrap">
-    <table class="table table-sm">
+    <table class="table table-sm" aria-describedby="recibosCaption">
+      <caption id="recibosCaption" class="sr-only">Listado paginado de recibos con totales y diferencias</caption>
       <thead>
         <tr>
           <th>ID</th>
@@ -37,13 +73,21 @@
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let r of items" [class.neg-diff]="r.Diferencia < 0" [class.pos-diff]="r.Diferencia > 0" [class.zero-diff]="r.Diferencia===0">
+        <tr *ngFor="let r of items" [class.neg-diff]="r.Diferencia < 0" [class.pos-diff]="r.Diferencia > 0" [class.zero-diff]="r.Diferencia===0" [attr.data-diff]="r.Diferencia">
           <td><span class="mono">#{{r.ReciboID}}</span></td>
           <td><span class="date-chip" [title]="r.Fecha">{{r.displayFecha || r.Fecha}}</span></td>
-          <td><span class="cliente" [title]="r.ClienteDisplay">{{r.ClienteDisplay}}</span></td>
+          <td>
+            <span class="cliente" [title]="r.ClienteDisplay">{{r.ClienteDisplay}}</span>
+            <span class="badge diff-badge" *ngIf="r.Diferencia !== 0" [class.neg]="r.Diferencia<0" [class.pos]="r.Diferencia>0" [title]="'Diferencia: '+ (r.Diferencia | number:'1.2-2')">{{r.Diferencia<0?'–':'+'}}{{abs(r.Diferencia) | number:'1.2-2'}}</span>
+          </td>
           <td class="text-right"><span class="amount">{{r.TotalPagos | number:'1.2-2'}}</span></td>
           <td class="text-right"><span class="amount">{{r.TotalAplicado | number:'1.2-2'}}</span></td>
-          <td class="text-right"><span class="diff" [class.zero]="r.Diferencia===0" [class.neg]="r.Diferencia<0" [class.pos]="r.Diferencia>0">{{r.Diferencia | number:'1.2-2'}}</span></td>
+          <td class="text-right diff-cell">
+            <span class="diff" [class.zero]="r.Diferencia===0" [class.neg]="r.Diferencia<0" [class.pos]="r.Diferencia>0">{{r.Diferencia | number:'1.2-2'}}</span>
+            <span class="diff-bar-wrapper" *ngIf="r._diffPct && r.Diferencia !== 0" [attr.aria-label]="'Magnitud relativa '+ (r._diffPct| number:'1.0-0') + '%'">
+              <span class="diff-bar"><span class="fill" [style.width.%]="r._diffPct" [class.neg]="r.Diferencia<0" [class.pos]="r.Diferencia>0"></span></span>
+            </span>
+          </td>
           <td><a class="btn btn-sm link" [routerLink]="['/inventario/recibos', r.ReciboID]" title="Ver detalle">Ver</a></td>
         </tr>
         <tr *ngIf="!items.length && !loading"><td colspan="7" class="no-data">Sin recibos</td></tr>
@@ -61,14 +105,14 @@
     </table>
   </div>
 
-  <div class="pager" *ngIf="total > limit || items.length">
-  <div class="pager-left">Página {{page}} / {{totalPages}} · Mostrando {{offset+1}} – {{endIndex}} de {{total}}</div>
+  <div class="pager" *ngIf="total > limit || items.length" aria-label="Paginación">
+  <div class="pager-left">Página <strong>{{page}}</strong> / {{totalPages}} · Mostrando {{offset+1}} – {{endIndex}} de {{total}}</div>
     <div class="pager-mid">
       <button class="btn" (click)="pagePrev()" [disabled]="page===1">Anterior</button>
       <button class="btn" (click)="pageNext()" [disabled]="page===totalPages">Siguiente</button>
     </div>
     <div class="pager-right">
-      <select class="f-input" [ngModel]="limit" (ngModelChange)="changeLimit($event)">
+      <select class="f-input" [ngModel]="limit" (ngModelChange)="changeLimit($event)" aria-label="Items por página">
         <option [ngValue]="10">10</option>
         <option [ngValue]="25">25</option>
         <option [ngValue]="50">50</option>
