@@ -21,6 +21,13 @@
 .table-sm thead{position:sticky;top:0;background:#f5f7fa;box-shadow:0 1px 0 #e2e5ea}
 .table-sm td,.table-sm th{padding:.4rem .5rem;vertical-align:middle;font-size:.66rem}
 .selected-row{background:#f0f7ff}
+.saldada-row{background:#f4f4f6;color:#70757d;opacity:.65}
+.saldada-row .saldo-pill{background:#d3d8dd;color:#555}
+.saldada-row input[type=checkbox]{cursor:not-allowed}
+.audit-toggle{font-size:.6rem;display:flex;align-items:center;gap:.3rem;white-space:nowrap}
+.audit-toggle .badge-count{background:#444;color:#fff;padding:0 6px;border-radius:10px;font-size:.55rem;font-weight:600}
+.audit-label{font-weight:400;font-size:.55rem;margin-left:.5rem;color:#666;padding:2px 6px;border:1px solid #ccc;border-radius:10px;background:#fafafa}
+.badge-saldada{display:inline-block;padding:2px 6px;border-radius:12px;background:#e0e3e7;color:#444;font-size:.55rem;font-weight:600;letter-spacing:.5px}
 .saldo-pill{display:inline-block;padding:2px 6px;border-radius:14px;background:var(--c-neg-bg);color:var(--c-neg);font-size:.55rem;font-weight:600;letter-spacing:.5px}
 .saldo-pill.zero{background:var(--c-pos-bg);color:var(--c-pos)}
 .aplicar-box{display:flex;gap:.35rem;align-items:center}

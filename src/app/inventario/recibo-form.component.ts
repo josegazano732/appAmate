@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { InventarioService } from './inventario.service';
 import { ParametrosService, PaymentMethod, Bank } from './parametros.service';
+import { ToastService } from '../shared/toast.service';
 
 @Component({
   selector: 'app-recibo-form',
@@ -31,8 +32,10 @@ export class ReciboFormComponent {
   observaciones = '';
   errorMessage: string | null = null;
   successMessage: string | null = null;
+  showSaldadas = false; // modo auditoría
+  saldadasCount = 0;
 
-  constructor(private svc: InventarioService, private params: ParametrosService) { this.loadVentas(); this.loadParams(); }
+  constructor(private svc: InventarioService, private params: ParametrosService, private toast: ToastService) { this.loadVentas(); this.loadParams(); }
 
   loadParams(){
     this.pmLoading = true;
@@ -83,30 +86,41 @@ export class ReciboFormComponent {
   async loadVentas() {
     try {
       const params: any = { limit: 200 };
+      if (!this.showSaldadas) params.saldoOnly = '1';
       if (this.ventasQ) params.q = this.ventasQ;
       const resp: any = await this.svc.listVentas(params).toPromise();
-      this.ventas = resp.items || [];
-      // update selectedMap entries with latest Saldo
+      const raw = resp.items || [];
+      let activas: any[] = [];
+      let saldadas: any[] = [];
+      for (const v of raw) {
+        const saldo = (v.Saldo == null ? v.Total : v.Saldo);
+        if (Number(saldo) > 0.009) activas.push(v); else saldadas.push({ ...v, _saldada:true });
+      }
+      this.saldadasCount = saldadas.length;
+      this.ventas = this.showSaldadas ? [...activas, ...saldadas] : activas;
+      // mantener selección sólo si sigue con saldo
+      this.selected = this.selected.filter(sel => this.ventas.some(v=> v.VentaID===sel.VentaID && !v._saldada));
+      const newMap: Record<number, {ImporteAplicado:number; error?:string}> = {};
       for (const s of this.selected) {
         const v = this.ventas.find(x => x.VentaID === s.VentaID);
-        this.selectedMap[s.VentaID] = { ImporteAplicado: s.ImporteAplicado, error: undefined };
-        if (v) {
-          // clamp if exceeds new saldo
-          if (this.selectedMap[s.VentaID].ImporteAplicado > (v.Saldo || v.Total || 0)) {
-            this.selectedMap[s.VentaID].error = 'Importe supera saldo actual';
-          }
-        }
+        if (v) newMap[s.VentaID] = { ImporteAplicado: s.ImporteAplicado };
       }
+      this.selectedMap = newMap;
     } catch (e) {
       console.error('No se pudo cargar ventas', e);
     }
   }
 
   toggleSelect(v: any, checked: boolean) {
+    if (v._saldada) {
+      if (checked) this.toast.info('Factura saldada: no se puede aplicar');
+      return; // ignorar
+    }
     const idx = this.selected.findIndex(s => s.VentaID === v.VentaID);
+    const saldoReal = (v.Saldo == null ? v.Total : v.Saldo) || 0;
     if (checked) {
       if (idx === -1) {
-        const defaultImp = Number(v.Saldo || v.Total || 0) || 0;
+        const defaultImp = Number(saldoReal) || 0;
         this.selected.push({ VentaID: v.VentaID, ImporteAplicado: defaultImp });
         this.selectedMap[v.VentaID] = { ImporteAplicado: defaultImp };
       }
@@ -120,11 +134,10 @@ export class ReciboFormComponent {
     const num = Number(val) || 0;
     const idx = this.selected.findIndex(s => s.VentaID === vId);
     const venta = this.ventas.find(v=>v.VentaID===vId);
-    const saldo = venta ? Number(venta.Saldo || venta.Total || 0) : 0;
-    if (num > saldo) {
-      // clamp and set error
-      if (idx !== -1) this.selected[idx].ImporteAplicado = saldo;
-      this.selectedMap[vId] = { ImporteAplicado: saldo, error: 'Se ajustó al saldo disponible' };
+    const saldoReal = venta ? ((venta.Saldo == null ? venta.Total : venta.Saldo) || 0) : 0;
+    if (num > saldoReal) {
+      if (idx !== -1) this.selected[idx].ImporteAplicado = saldoReal;
+      this.selectedMap[vId] = { ImporteAplicado: saldoReal, error: 'Se ajustó al saldo disponible' };
     } else {
       if (idx !== -1) this.selected[idx].ImporteAplicado = num;
       this.selectedMap[vId] = { ImporteAplicado: num, error: undefined };
@@ -181,10 +194,14 @@ export class ReciboFormComponent {
   toggleSelectAll(checked:boolean) {
     if (checked) {
       for (const v of this.ventas) {
+        if (v._saldada) continue; // no incluir saldadas
         if (!this.selected.some(s=>s.VentaID===v.VentaID)) {
-          const imp = Number(v.Saldo || v.Total || 0) || 0;
-          this.selected.push({ VentaID: v.VentaID, ImporteAplicado: imp });
-          this.selectedMap[v.VentaID] = { ImporteAplicado: imp };
+          const saldoReal = (v.Saldo == null ? v.Total : v.Saldo) || 0;
+          const imp = Number(saldoReal) || 0;
+          if (imp > 0) {
+            this.selected.push({ VentaID: v.VentaID, ImporteAplicado: imp });
+            this.selectedMap[v.VentaID] = { ImporteAplicado: imp };
+          }
         }
       }
     } else {
