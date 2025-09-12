@@ -45,15 +45,21 @@
       <div class="adv-grid">
         <div class="field">
           <label>Desde
-            <input type="date" [(ngModel)]="fechaDesde" name="fechaDesde" (change)="onSearchChange()" aria-label="Fecha desde" />
+            <input type="date" [(ngModel)]="fechaDesde" name="fechaDesde" (change)="onSearchChange(); clearPresetIfManual()" aria-label="Fecha desde" />
           </label>
         </div>
         <div class="field">
           <label>Hasta
-            <input type="date" [(ngModel)]="fechaHasta" name="fechaHasta" (change)="onSearchChange()" aria-label="Fecha hasta" />
+            <input type="date" [(ngModel)]="fechaHasta" name="fechaHasta" (change)="onSearchChange(); clearPresetIfManual()" aria-label="Fecha hasta" />
           </label>
         </div>
-        <div class="quick-help" aria-hidden="true">Enter o Aplicar</div>
+        <div class="preset-col">
+          <div class="preset-label" aria-hidden="true">Presets</div>
+          <div class="presets-btns" role="group" aria-label="Presets rango de fechas">
+            <button type="button" class="btn ghost xs" *ngFor="let p of datePresets" (click)="applyDatePreset(p.key)" [class.active]="activePreset===p.key" [attr.aria-pressed]="activePreset===p.key">{{p.label}}</button>
+          </div>
+          <div class="quick-help" aria-hidden="true">Enter o Aplicar</div>
+        </div>
       </div>
     </div>
   </form>

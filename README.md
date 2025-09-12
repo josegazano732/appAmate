@@ -42,6 +42,7 @@ El listado fue modernizado para aportar trazabilidad y lectura rápida:
 - Badges de estado (saldo / diferencia) y resaltado condicional con clases semánticas.
 - Modo compacto (toggle) que reduce paddings y densidad para alta volumetría de registros.
 - Acordeón de filtros avanzados (rango de fechas, diferencia, montos) con contador de filtros activos.
+- Presets de rango de fechas (Hoy, Últimos 7 días, Mes actual, Mes anterior, Año actual) para acelerar consultas frecuentes.
 - Accesibilidad: uso de `aria-label`, `aria-pressed`, foco visible consistente, tipografía tabular para importes.
 - Exportaciones directas: CSV / PDF / JSON con inclusión de campos fiscales.
 

@@ -29,6 +29,12 @@
 .advanced{grid-column:1/-1;background:#f8fbfe;border:1px solid #dce5ee;padding:12px 14px;border-radius:10px;margin-top:4px;position:relative;animation:fadeSlide .25s ease}
 .advanced:before{content:"Filtros avanzados";position:absolute;top:-9px;left:14px;background:#f8fbfe;padding:0 6px;font-size:.55rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:#667582}
 .adv-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));align-items:end}
+.preset-col{display:flex;flex-direction:column;gap:6px;align-self:stretch}
+.preset-label{font-size:.55rem;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:#667582}
+.presets-btns{display:flex;flex-wrap:wrap;gap:6px}
+.presets-btns .btn.xs{padding:4px 8px;font-size:.55rem;line-height:1;border-radius:6px}
+.presets-btns .btn.xs.active{background:var(--c-primary);color:#fff;border-color:var(--c-primary)}
+.presets-btns .btn.xs.active:hover{background:var(--c-primary)}
 @keyframes fadeSlide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 
 /* Inputs & Buttons */

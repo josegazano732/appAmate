@@ -19,6 +19,15 @@ export class RecibosListComponent implements OnInit {
   aggregateAplicado = 0;
   compact = false;
   advancedOpen = false; // acordeón filtros avanzados
+  // presets de fecha
+  datePresets = [
+    { key: 'hoy', label: 'Hoy' },
+    { key: 'ult7', label: 'Últimos 7 días' },
+    { key: 'mes', label: 'Mes actual' },
+    { key: 'mesPrev', label: 'Mes anterior' },
+    { key: 'anio', label: 'Año actual' }
+  ];
+  activePreset: string | null = null;
 
   get page() { return Math.floor(this.offset / this.limit) + 1; }
   get totalPages() { return Math.max(1, Math.ceil(this.total / this.limit)); }
@@ -60,7 +69,7 @@ export class RecibosListComponent implements OnInit {
   onSearchChange() { this.offset = 0; this.load(); }
 
   clearFilters(){
-    this.q=''; this.fechaDesde=null; this.fechaHasta=null; this.offset=0; this.load();
+    this.q=''; this.fechaDesde=null; this.fechaHasta=null; this.activePreset=null; this.offset=0; this.load();
   }
 
   pageNext(){ if(this.offset + this.limit < this.total){ this.offset += this.limit; this.load(); } }
@@ -91,5 +100,39 @@ export class RecibosListComponent implements OnInit {
   toggleAdvanced(){ this.advancedOpen = !this.advancedOpen; }
   get activeAdvancedCount(){
     let c=0; if(this.fechaDesde) c++; if(this.fechaHasta) c++; return c;
+  }
+
+  applyDatePreset(key:string){
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = today.getMonth(); // 0-based
+    const pad = (n:number)=> n.toString().padStart(2,'0');
+    const toStr = (d:Date)=> `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    let dDesde: string | null = null;
+    let dHasta: string | null = null;
+    switch(key){
+      case 'hoy':
+        dDesde = dHasta = toStr(today); break;
+      case 'ult7': {
+        const d = new Date(today); d.setDate(d.getDate()-6); // incluye hoy => 7 días
+        dDesde = toStr(d); dHasta = toStr(today); break; }
+      case 'mes': {
+        const first = new Date(y,m,1); const last = new Date(y,m+1,0);
+        dDesde = toStr(first); dHasta = toStr(last); break; }
+      case 'mesPrev': {
+        const first = new Date(y,m-1,1); const last = new Date(y,m,0);
+        dDesde = toStr(first); dHasta = toStr(last); break; }
+      case 'anio': {
+        const first = new Date(y,0,1); const last = new Date(y,11,31);
+        dDesde = toStr(first); dHasta = toStr(last); break; }
+      default: return;
+    }
+    this.activePreset = key;
+    this.fechaDesde = dDesde; this.fechaHasta = dHasta; this.offset=0; this.load();
+  }
+
+  clearPresetIfManual(){
+    // Si el usuario cambia manualmente las fechas se desactiva el preset
+    this.activePreset = null;
   }
 }
