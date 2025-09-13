@@ -63,4 +63,38 @@ export class InventarioService {
   recalcSaldosVentas(){
     return this.http.post<{ok:boolean; updated:number}>(`${this.api}/ventas/recalc-saldos`, {});
   }
+
+  // Búsqueda global
+  globalSearch(q:string){
+    return this.http.get<any>(`${this.api}/search`, { params: { q } });
+  }
+
+  // --- Caja ---
+  cajaListMovimientos(params?: any){
+    return this.http.get<any>(`${this.api}/caja/movimientos`, { params: params || {} });
+  }
+  cajaCreateMovimiento(mov:any){
+    return this.http.post<any>(`${this.api}/caja/movimientos`, mov);
+  }
+  cajaDeleteMovimiento(id:number){
+    return this.http.delete<any>(`${this.api}/caja/movimientos/${id}`);
+  }
+  cajaSummary(params?: any){
+    return this.http.get<any>(`${this.api}/caja/summary`, { params: params || {} });
+  }
+  cajaExportCsv(params?: any){
+    return this.http.get(`${this.api}/caja/export`, { params: params || {}, responseType: 'text' });
+  }
+  cajaExportPdf(params?: any){
+    return this.http.get(`${this.api}/caja/export/pdf`, { params: params || {}, responseType: 'blob' });
+  }
+  cajaListCierres(){
+    return this.http.get<any>(`${this.api}/caja/cierres`);
+  }
+  cajaGenerarCierre(fecha?:string, observaciones?:string){
+    const body:any = {};
+    if (fecha) body.Fecha = fecha;
+    if (observaciones) body.Observaciones = observaciones;
+    return this.http.post<any>(`${this.api}/caja/cierre`, body);
+  }
 }

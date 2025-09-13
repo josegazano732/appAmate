@@ -1,0 +1,75 @@
+<div class="caja-movs">
+  <h2>Movimientos de Caja</h2>
+  <div class="info-bar" *ngIf="!loading">
+    <span>Saldo Actual: <strong>{{saldoActual | number:'1.2-2'}}</strong></span>
+    <span *ngIf="filtros.desde || filtros.hasta" class="rango">Rango: {{filtros.desde || '∞'}} → {{filtros.hasta || '∞'}}</span>
+    <span class="count">Mostrando {{movimientos.length}} / {{total}}</span>
+  </div>
+  <form class="filtros" (ngSubmit)="load()">
+    <input type="text" placeholder="Buscar desc/ref" [(ngModel)]="filtros.q" name="q" />
+    <select [(ngModel)]="filtros.tipo" name="tipo">
+      <option value="">Tipo</option>
+      <option>INGRESO</option>
+      <option>EGRESO</option>
+      <option>AJUSTE</option>
+    </select>
+    <input type="text" placeholder="Medio" [(ngModel)]="filtros.medio" name="medio" />
+    <select [(ngModel)]="filtros.origen" name="origen">
+      <option value="">Origen</option>
+      <option>MANUAL</option>
+      <option>RECIBO</option>
+    </select>
+    <input type="date" [(ngModel)]="filtros.desde" name="desde" />
+    <input type="date" [(ngModel)]="filtros.hasta" name="hasta" />
+  <button type="submit" [disabled]="loading">Filtrar</button>
+  <a routerLink="/caja/movimientos/new" class="btn-new">Nuevo</a>
+    <button type="button" (click)="exportCsv()">CSV</button>
+    <button type="button" (click)="exportPdf()">PDF</button>
+    <div class="quick-ranges">
+      <button type="button" (click)="setQuickRange('hoy')">Hoy</button>
+      <button type="button" (click)="setQuickRange('7d')">7d</button>
+      <button type="button" (click)="setQuickRange('mes')">Mes</button>
+      <button type="button" (click)="setQuickRange('anio')">Año</button>
+      <button type="button" (click)="setQuickRange('todo')">Todo</button>
+      <button type="button" class="clear-filtros" (click)="clearFilters()">Limpiar</button>
+    </div>
+  </form>
+
+  <div *ngIf="loading">Cargando...</div>
+  <table *ngIf="!loading && movimientos.length" class="tabla">
+    <thead>
+      <tr>
+        <th>FechaHora</th><th>Tipo</th><th>Origen</th><th>Ref</th><th>Descripción</th><th>Medio</th><th>Importe</th><th>Saldo</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let m of movimientos">
+        <td>{{m.FechaHora}}</td>
+        <td>{{m.Tipo}}</td>
+        <td>{{m.Origen}}</td>
+        <td>{{m.ReferenciaID || ''}}</td>
+        <td>{{m.Descripcion}}</td>
+        <td>{{m.Medio || ''}}</td>
+        <td class="num" [class.ingreso]="m.Tipo==='INGRESO'" [class.egreso]="m.Tipo==='EGRESO'" [class.ajuste]="m.Tipo==='AJUSTE'">{{m.Importe | number:'1.2-2'}}</td>
+        <td class="num saldo">{{m.SaldoPosterior | number:'1.2-2'}}</td>
+        <td>
+          <button *ngIf="m.Origen==='MANUAL'" (click)="borrar(m)">🗑</button>
+        </td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="6">Totales</td>
+        <td class="num"><span class="ingreso">{{totalIngresos | number:'1.2-2'}}</span> / <span class="egreso">{{totalEgresos | number:'1.2-2'}}</span> / <span class="ajuste">{{totalAjustes | number:'1.2-2'}}</span></td>
+        <td class="num">{{neto | number:'1.2-2'}}</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+  <div *ngIf="!loading && !movimientos.length" class="empty">Sin movimientos.</div>
+  <div class="paginacion" *ngIf="!loading && total > limit">
+    <button (click)="prevPage()" [disabled]="page===1">«</button>
+    <span>Página {{page}} / {{ totalPages }}</span>
+    <button (click)="nextPage()" [disabled]="page*limit>=total">»</button>
+  </div>
+</div>

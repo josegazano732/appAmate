@@ -2,14 +2,20 @@ import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { HttpClientModule } from '@angular/common/http';
 import { RouterModule, Routes } from '@angular/router';
+import { CajaDashboardComponent } from './caja/caja-dashboard.component';
+import { CajaMovimientosListComponent } from './caja/caja-movimientos-list.component';
+import { CajaMovimientoFormComponent } from './caja/caja-movimiento-form.component';
 const routes: Routes = [
   { path: '', component: ClientesListComponent },
   { path: 'clientes/new', component: ClienteFormComponent },
   { path: 'clientes/edit/:id', component: ClienteFormComponent },
   { path: 'datos-clientes/new', component: DatosClienteFormComponent },
   { path: 'datos-clientes/edit/:id', component: DatosClienteFormComponent },
-  { path: 'notas', loadChildren: () => import('./notas/notas.module').then(m => m.NotasModule) }
-  ,{ path: 'inventario', loadChildren: () => import('./inventario/inventario.module').then(m => m.InventarioModule) }
+  { path: 'caja', component: CajaDashboardComponent },
+  { path: 'caja/movimientos', component: CajaMovimientosListComponent },
+  { path: 'caja/movimientos/new', component: CajaMovimientoFormComponent },
+  { path: 'notas', loadChildren: () => import('./notas/notas.module').then(m => m.NotasModule) },
+  { path: 'inventario', loadChildren: () => import('./inventario/inventario.module').then(m => m.InventarioModule) }
 ];
 
 import { AppComponent } from './app.component';
@@ -31,7 +37,10 @@ import { SharedModule } from './shared/shared.module';
     ClienteFormComponent,
     DatosClientesListComponent,
     DatosClienteFormComponent,
-  BreadcrumbComponent
+  BreadcrumbComponent,
+  CajaDashboardComponent,
+  CajaMovimientosListComponent,
+  CajaMovimientoFormComponent
   
   ],
   imports: [

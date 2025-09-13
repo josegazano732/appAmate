@@ -1,0 +1,76 @@
+<div class="caja-dash">
+  <h2>Caja - Resumen</h2>
+  <form class="filtros" (ngSubmit)="load()">
+    <label>Desde <input type="date" [(ngModel)]="filtros.desde" name="desde"></label>
+    <label>Hasta <input type="date" [(ngModel)]="filtros.hasta" name="hasta"></label>
+    <button type="submit" [disabled]="loading">Filtrar</button>
+    <button type="button" (click)="exportCsv()">CSV</button>
+    <button type="button" (click)="exportPdf()">PDF</button>
+  </form>
+
+  <div *ngIf="loading">Cargando...</div>
+  <div *ngIf="!loading && resumen" class="grid">
+    <div class="card ingreso">
+      <div class="label">Ingresos</div>
+      <div class="value">{{resumen.totales.ingresos | number:'1.2-2'}}</div>
+    </div>
+    <div class="card egreso">
+      <div class="label">Egresos</div>
+      <div class="value">{{resumen.totales.egresos | number:'1.2-2'}}</div>
+    </div>
+    <div class="card ajuste">
+      <div class="label">Ajustes</div>
+      <div class="value">{{resumen.totales.ajustes | number:'1.2-2'}}</div>
+    </div>
+    <div class="card neto">
+      <div class="label">Neto</div>
+      <div class="value">{{resumen.totales.neto | number:'1.2-2'}}</div>
+    </div>
+    <div class="card saldo">
+      <div class="label">Saldo Final</div>
+      <div class="value">{{resumen.saldoFinal | number:'1.2-2'}}</div>
+    </div>
+  </div>
+
+  <h3>Por Medio</h3>
+  <table *ngIf="resumen?.porMedio?.length" class="tabla-medios">
+    <thead><tr><th>Medio</th><th>Ingresos</th><th>Egresos</th><th>Neto</th></tr></thead>
+    <tbody>
+      <tr *ngFor="let m of resumen.porMedio">
+        <td>{{m.Medio || '—'}}</td>
+        <td class="num">{{m.ingresos | number:'1.2-2'}}</td>
+        <td class="num">{{m.egresos | number:'1.2-2'}}</td>
+        <td class="num">{{(m.ingresos - m.egresos) | number:'1.2-2'}}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div *ngIf="!resumen?.porMedio?.length && !loading" class="empty">Sin movimientos en rango.</div>
+</div>
+<div class="cierres-panel">
+  <h3>Cierres Diarios</h3>
+  <form class="form-cierre" (ngSubmit)="generarCierre()">
+    <textarea placeholder="Observaciones (opcional)" [(ngModel)]="cierreObs" name="obs"></textarea>
+    <div class="acciones-cierre">
+      <button type="submit" [disabled]="generarEnProgreso">{{generarEnProgreso? 'Generando...' : 'Cerrar Día'}}</button>
+      <span class="msg" *ngIf="mensajeCierre">{{mensajeCierre}}</span>
+    </div>
+  </form>
+  <div *ngIf="cierreLoading">Cargando cierres...</div>
+  <table *ngIf="!cierreLoading && cierres.length" class="tabla-cierres">
+    <thead>
+      <tr><th>Fecha</th><th>Saldo Final</th><th>Ingresos</th><th>Egresos</th><th>Ajustes</th><th>Neto Día</th><th>Obs</th></tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let c of cierres">
+        <td>{{c.Fecha}}</td>
+        <td class="num">{{c.SaldoFinal | number:'1.2-2'}}</td>
+        <td class="num ingreso">{{c.TotalIngresos | number:'1.2-2'}}</td>
+        <td class="num egreso">{{c.TotalEgresos | number:'1.2-2'}}</td>
+        <td class="num ajuste">{{c.TotalAjustes | number:'1.2-2'}}</td>
+        <td class="num">{{c.NetoPeriodo | number:'1.2-2'}}</td>
+        <td>{{(c.Observaciones||'').slice(0,40)}}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div *ngIf="!cierreLoading && !cierres.length" class="empty">Sin cierres registrados.</div>
+</div>

@@ -1,0 +1,10 @@
+.caja-form{max-width:480px;margin:0 auto;}
+.caja-form form{display:flex;flex-direction:column;gap:.75rem;}
+.caja-form label{display:flex;flex-direction:column;font-size:.7rem;font-weight:600;gap:.25rem;}
+.caja-form input,.caja-form select,.caja-form textarea{padding:.45rem .55rem;font-size:.75rem;border:1px solid #cbd5e1;border-radius:6px;}
+.caja-form textarea{min-height:90px;resize:vertical;}
+.actions{display:flex;gap:.75rem;align-items:center;}
+.actions button{background:#0d5ea7;color:#fff;border:none;padding:.55rem 1rem;font-size:.75rem;border-radius:6px;cursor:pointer;}
+.actions a{font-size:.7rem;text-decoration:none;color:#475569;}
+.error{color:#b91c1c;font-size:.7rem;}
+.dark-theme .caja-form input,.dark-theme .caja-form select,.dark-theme .caja-form textarea{background:#1e293b;border-color:#334155;color:#e2e8f0;}

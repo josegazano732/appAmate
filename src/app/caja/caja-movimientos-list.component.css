@@ -1,0 +1,31 @@
+.caja-movs{max-width:1100px;margin:0 auto;}
+.caja-movs .filtros{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem;align-items:flex-end;}
+.caja-movs .filtros input,.caja-movs .filtros select{padding:.35rem .45rem;font-size:.7rem;border:1px solid #cbd5e1;border-radius:4px;}
+.caja-movs .filtros button{padding:.4rem .65rem;font-size:.65rem;border:none;border-radius:4px;background:#0d5ea7;color:#fff;cursor:pointer;}
+.caja-movs .filtros .btn-new{background:#166534;color:#fff;padding:.42rem .7rem;font-size:.65rem;border-radius:4px;text-decoration:none;display:inline-block;}
+.table-actions{display:flex;gap:.25rem;}
+.tabla{width:100%;border-collapse:collapse;font-size:.7rem;}
+.tabla th,.tabla td{border:1px solid #e2e8f0;padding:.35rem .4rem;text-align:left;}
+.tabla th{background:#f1f5f9;font-weight:600;font-size:.55rem;text-transform:uppercase;letter-spacing:.05em;}
+.num{text-align:right;font-variant-numeric:tabular-nums;}
+.ingreso{color:#15803d;font-weight:600;}
+.egreso{color:#b91c1c;font-weight:600;}
+.ajuste{color:#7c3aed;font-weight:600;}
+.saldo{color:#0f4a7b;font-weight:600;}
+.empty{font-size:.75rem;opacity:.65;font-style:italic;margin-top:.5rem;}
+.dark-theme .tabla th{background:#334155;}
+.dark-theme .tabla th,.dark-theme .tabla td{border-color:#334155;}
+.dark-theme .tabla td{background:#1e293b;}
+.quick-ranges{display:flex;gap:.25rem;flex-wrap:wrap;margin-left:auto;}
+.quick-ranges button{background:#475569;font-size:.6rem;padding:.35rem .55rem;border:none;border-radius:4px;color:#fff;cursor:pointer;}
+.quick-ranges button.clear-filtros{background:#b91c1c;}
+.quick-ranges button:hover{filter:brightness(1.05);} 
+.dark-theme .quick-ranges button{background:#334155;}
+.dark-theme .quick-ranges button.clear-filtros{background:#7f1d1d;}
+.info-bar{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;font-size:.65rem;margin:.25rem 0 .5rem;color:#334155;}
+.info-bar .rango{font-style:italic;opacity:.8;}
+.info-bar .count{margin-left:auto;}
+.dark-theme .info-bar{color:#e2e8f0;}
+.paginacion{display:flex;align-items:center;gap:.6rem;margin-top:.6rem;font-size:.65rem;}
+.paginacion button{background:#0d5ea7;color:#fff;border:none;padding:.35rem .6rem;font-size:.65rem;border-radius:4px;cursor:pointer;}
+.paginacion button[disabled]{opacity:.4;cursor:default;}

@@ -1,34 +1,148 @@
-
-
-<div class="container">
-  <app-toast-container></app-toast-container>
-  <div class="row justify-content-center mb-4">
-    <div class="col-md-8">
-      <div class="card p-4 text-center">
-        <h1 class="mb-3" style="color:#007bff;">CRUD de Clientes y Datos de Clientes</h1>
-        <nav class="mb-2">
-            <a routerLink="/" class="btn btn-outline-primary mx-2">Clientes</a>
-            <a routerLink="/notas" class="btn btn-outline-success mx-2">Notas de pedido</a>
-            <a routerLink="/inventario" class="btn btn-outline-secondary mx-2">Inventario</a>
-            <a routerLink="/inventario/depositos" class="btn btn-outline-secondary mx-2">Depósitos</a>
-            <a routerLink="/inventario/movimientos" class="btn btn-outline-secondary mx-2">Movimientos</a>
-            <a routerLink="/inventario/ventas" class="btn btn-outline-secondary mx-2">Facturas</a>
-            <a routerLink="/inventario/recibos" class="btn btn-outline-secondary mx-2">Recibos</a>
-            <a routerLink="/inventario/productos" class="btn btn-outline-secondary mx-2">Listado Productos</a>
-            <a routerLink="/inventario/productos/new" class="btn btn-outline-secondary mx-2">Nuevo Producto</a>
-      <a routerLink="/inventario/parametros/banks" class="btn btn-outline-secondary mx-2">Bancos</a>
-      <a routerLink="/inventario/parametros/payment-methods" class="btn btn-outline-secondary mx-2">Métodos Pago</a>
-        </nav>
+<app-toast-container></app-toast-container>
+<header class="app-navbar" [class.open]="menuOpen">
+  <div class="nav-inner">
+    <div class="brand" routerLink="/">
+      <div class="logo">AS</div>
+      <div class="meta">
+        <span class="app-name">AppSis</span>
+        <span class="app-sub">Gestión Comercial</span>
+      </div>
+    </div>
+    <nav class="main-links" aria-label="Principal">
+      <div class="global-search" [class.open]="searchOpen">
+        <input type="text" placeholder="Buscar... (cliente, factura, producto, recibo)" [(ngModel)]="searchTerm" (input)="onSearchInput()" (keydown.escape)="clearSearch()" (focus)="openSearch()" />
+        <div class="results" *ngIf="searchOpen && results && hasAnyResults()">
+          <div class="section" *ngIf="results.clientes?.length">
+            <div class="sec-title">Clientes</div>
+            <a *ngFor="let c of results.clientes" (click)="goToCliente(c)">{{c.NombreRazonSocial}}</a>
+          </div>
+          <div class="section" *ngIf="results.ventas?.length">
+            <div class="sec-title">Facturas</div>
+            <a *ngFor="let v of results.ventas" (click)="goToVenta(v)">{{v.NumeroComp}} <span class="hint">{{v.Total | number:'1.0-0'}}</span></a>
+          </div>
+          <div class="section" *ngIf="results.productos?.length">
+            <div class="sec-title">Productos</div>
+            <a *ngFor="let p of results.productos" (click)="goToProducto(p)">{{p.Codigo || '#'+p.ProductoID}} <span class="hint">{{p.Nombre}}</span></a>
+          </div>
+          <div class="section" *ngIf="results.recibos?.length">
+            <div class="sec-title">Recibos</div>
+            <a *ngFor="let r of results.recibos" (click)="goToRecibo(r)">#{{r.ReciboID}} <span class="hint">{{ (r.Fecha||'').split(' ')[0] }}</span></a>
+          </div>
+          <div class="empty" *ngIf="!hasAnyResults()">Sin resultados</div>
+        </div>
+        <button *ngIf="searchTerm" class="clear" (click)="clearSearch()" aria-label="Limpiar búsqueda">×</button>
+      </div>
+      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}"><span>Clientes</span></a>
+      <a routerLink="/notas" routerLinkActive="active"><span>Notas Pedido</span></a>
+      <div class="group">
+        <button type="button" class="grp-toggle" (click)="toggleSub('caja')" [class.expanded]="subOpen.caja">Caja<span class="chevron"></span></button>
+        <div class="submenu" [class.show]="subOpen.caja">
+          <a routerLink="/caja" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}">Resumen</a>
+          <a routerLink="/caja/movimientos" routerLinkActive="active">Movimientos</a>
+          <a routerLink="/caja/movimientos/new" routerLinkActive="active">Nuevo Movimiento</a>
+        </div>
+      </div>
+      <div class="group">
+        <button type="button" class="grp-toggle" (click)="toggleSub('inv')" [class.expanded]="subOpen.inv">Inventario<span class="chevron"></span></button>
+        <div class="submenu" [class.show]="subOpen.inv">
+          <a routerLink="/inventario" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}">Dashboard</a>
+          <a routerLink="/inventario/depositos" routerLinkActive="active">Depósitos</a>
+          <a routerLink="/inventario/movimientos" routerLinkActive="active">Movimientos</a>
+          <a routerLink="/inventario/productos" routerLinkActive="active">Productos</a>
+          <a routerLink="/inventario/productos/new" routerLinkActive="active">Nuevo Producto</a>
+        </div>
+      </div>
+      <div class="group">
+        <button type="button" class="grp-toggle" (click)="toggleSub('ventas')" [class.expanded]="subOpen.ventas">Ventas<span class="chevron"></span></button>
+        <div class="submenu" [class.show]="subOpen.ventas">
+          <a routerLink="/inventario/ventas" routerLinkActive="active">Facturas</a>
+          <a routerLink="/inventario/recibos" routerLinkActive="active">Recibos</a>
+        </div>
+      </div>
+      <div class="group">
+        <button type="button" class="grp-toggle" (click)="toggleSub('param')" [class.expanded]="subOpen.param">Parámetros<span class="chevron"></span></button>
+        <div class="submenu" [class.show]="subOpen.param">
+          <a routerLink="/inventario/parametros/banks" routerLinkActive="active">Bancos</a>
+          <a routerLink="/inventario/parametros/payment-methods" routerLinkActive="active">Métodos Pago</a>
+        </div>
+      </div>
+    </nav>
+    <div class="right-zone">
+      <button class="mode-switch" (click)="toggleTheme()" [attr.aria-label]="darkMode ? 'Tema claro' : 'Tema oscuro'">
+        <span *ngIf="!darkMode">🌙</span>
+        <span *ngIf="darkMode">☀️</span>
+      </button>
+      <button class="burger" (click)="menuOpen=!menuOpen" aria-label="Menú" [attr.aria-expanded]="menuOpen"> <span></span><span></span><span></span></button>
+    </div>
+  </div>
+  <div class="mobile-panel" *ngIf="menuOpen">
+    <div class="mobile-links">
+        <div class="mobile-search" [class.open]="searchOpen">
+          <input type="text" placeholder="Buscar..." [(ngModel)]="searchTerm" (focus)="openSearch()" (input)="onSearchInput(true)" (keydown.escape)="clearSearch()" />
+          <button *ngIf="searchTerm" class="clear" (click)="clearSearch()">×</button>
+        </div>
+        <div class="results mobile" *ngIf="menuOpen && searchOpen && results && hasAnyResults()">
+          <div class="section" *ngIf="results.clientes?.length">
+            <div class="sec-title">Clientes</div>
+            <a *ngFor="let c of results.clientes" (click)="goToCliente(c)">{{c.NombreRazonSocial}}</a>
+          </div>
+          <div class="section" *ngIf="results.ventas?.length">
+            <div class="sec-title">Facturas</div>
+            <a *ngFor="let v of results.ventas" (click)="goToVenta(v)">{{v.NumeroComp}} <span class="hint">{{v.Total | number:'1.0-0'}}</span></a>
+          </div>
+            <div class="section" *ngIf="results.productos?.length">
+              <div class="sec-title">Productos</div>
+              <a *ngFor="let p of results.productos" (click)="goToProducto(p)">{{p.Codigo || '#'+p.ProductoID}} <span class="hint">{{p.Nombre}}</span></a>
+            </div>
+            <div class="section" *ngIf="results.recibos?.length">
+              <div class="sec-title">Recibos</div>
+              <a *ngFor="let r of results.recibos" (click)="goToRecibo(r)">#{{r.ReciboID}} <span class="hint">{{ (r.Fecha||'').split(' ')[0] }}</span></a>
+            </div>
+          <div class="empty" *ngIf="!hasAnyResults()">Sin resultados</div>
+        </div>
+      <a routerLink="/" routerLinkActive="active" (click)="closeMenu()" [routerLinkActiveOptions]="{exact:true}">Clientes</a>
+      <a routerLink="/notas" routerLinkActive="active" (click)="closeMenu()">Notas Pedido</a>
+      <div class="m-group">
+        <div class="m-header" (click)="toggleSub('caja')">Caja <span class="m-chevron" [class.open]="subOpen.caja"></span></div>
+        <div class="m-sub" *ngIf="subOpen.caja">
+          <a routerLink="/caja" (click)="closeMenu()">Resumen</a>
+          <a routerLink="/caja/movimientos" (click)="closeMenu()">Movimientos</a>
+          <a routerLink="/caja/movimientos/new" (click)="closeMenu()">Nuevo Movimiento</a>
+        </div>
+      </div>
+      <div class="m-group">
+        <div class="m-header" (click)="toggleSub('inv')">Inventario <span class="m-chevron" [class.open]="subOpen.inv"></span></div>
+        <div class="m-sub" *ngIf="subOpen.inv">
+          <a routerLink="/inventario" routerLinkActive="active" (click)="closeMenu()">Dashboard</a>
+          <a routerLink="/inventario/depositos" (click)="closeMenu()">Depósitos</a>
+          <a routerLink="/inventario/movimientos" (click)="closeMenu()">Movimientos</a>
+          <a routerLink="/inventario/productos" (click)="closeMenu()">Productos</a>
+          <a routerLink="/inventario/productos/new" (click)="closeMenu()">Nuevo Producto</a>
+        </div>
+      </div>
+      <div class="m-group">
+        <div class="m-header" (click)="toggleSub('ventas')">Ventas <span class="m-chevron" [class.open]="subOpen.ventas"></span></div>
+        <div class="m-sub" *ngIf="subOpen.ventas">
+          <a routerLink="/inventario/ventas" (click)="closeMenu()">Facturas</a>
+          <a routerLink="/inventario/recibos" (click)="closeMenu()">Recibos</a>
+        </div>
+      </div>
+      <div class="m-group">
+        <div class="m-header" (click)="toggleSub('param')">Parámetros <span class="m-chevron" [class.open]="subOpen.param"></span></div>
+        <div class="m-sub" *ngIf="subOpen.param">
+          <a routerLink="/inventario/parametros/banks" (click)="closeMenu()">Bancos</a>
+          <a routerLink="/inventario/parametros/payment-methods" (click)="closeMenu()">Métodos Pago</a>
+        </div>
       </div>
     </div>
   </div>
-  <div class="row">
-    <div class="col-12">
-  <router-outlet></router-outlet>
-      
-    </div>
+</header>
+
+<main class="app-content" [class.dark]="darkMode">
+  <div class="page-container">
+    <router-outlet></router-outlet>
   </div>
-</div>
+</main>
 
 
 

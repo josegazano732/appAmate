@@ -1,0 +1,26 @@
+<div class="caja-form">
+  <h2>Nuevo Movimiento Manual</h2>
+  <form (ngSubmit)="submit()">
+    <label>Tipo
+      <select [(ngModel)]="model.Tipo" name="Tipo" required>
+        <option>INGRESO</option>
+        <option>EGRESO</option>
+        <option>AJUSTE</option>
+      </select>
+    </label>
+    <label>Importe
+      <input type="number" step="0.01" [(ngModel)]="model.Importe" name="Importe" required>
+    </label>
+    <label>Medio
+      <input type="text" [(ngModel)]="model.Medio" name="Medio">
+    </label>
+    <label>Descripción
+      <textarea [(ngModel)]="model.Descripcion" name="Descripcion"></textarea>
+    </label>
+    <div class="error" *ngIf="error">{{error}}</div>
+    <div class="actions">
+      <button type="submit" [disabled]="saving">Guardar</button>
+      <a routerLink="/caja/movimientos">Cancelar</a>
+    </div>
+  </form>
+</div>

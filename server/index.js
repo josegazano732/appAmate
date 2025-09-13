@@ -2305,8 +2305,78 @@ try {
   } catch(normErr){
     console.warn('Normalización de saldos: no se pudo ajustar residuales', normErr && normErr.message);
   }
+  // Tabla de caja para registrar ingresos/egresos
+  try {
+    await db.exec(`CREATE TABLE IF NOT EXISTS caja_movimientos (
+      MovimientoID INTEGER PRIMARY KEY AUTOINCREMENT,
+      FechaHora TEXT,
+      Tipo TEXT,              -- INGRESO | EGRESO | AJUSTE
+      Origen TEXT,            -- RECIBO | MANUAL | AJUSTE
+      ReferenciaID INTEGER,   -- ReciboID u otro
+      Descripcion TEXT,
+      Importe REAL DEFAULT 0, -- Positivo siempre; signo lo da Tipo
+      Medio TEXT,             -- Método de pago / canal
+      SaldoPosterior REAL DEFAULT 0,
+      CreatedAt TEXT
+    );`);
+    // Backfill de movimientos de caja a partir de recibos históricos si la tabla caja_movimientos está vacía
+    try {
+      const countCaja = await db.get('SELECT COUNT(*) as c FROM caja_movimientos');
+      if (countCaja && countCaja.c === 0) {
+        console.log('Caja vacía: iniciando backfill de recibos existentes');
+        // Traer pagos detallados para cada recibo (cada pago = un ingreso por su monto)
+        const pagos = await db.all(`SELECT rp.ReciboID, rp.Monto, rp.TipoPago, r.Fecha
+          FROM recibo_pagos rp INNER JOIN recibos r ON r.ReciboID = rp.ReciboID
+          ORDER BY r.ReciboID ASC, rp.ReciboPagoID ASC`);
+        let saldo = 0;
+        const now = new Date().toISOString().slice(0,19).replace('T',' ');
+        const insStmt = await db.prepare('INSERT INTO caja_movimientos (FechaHora, Tipo, Origen, ReferenciaID, Descripcion, Importe, Medio, SaldoPosterior, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        try {
+          for (const p of pagos) {
+            const monto = Number(p.Monto)||0;
+            if (monto <= 0) continue;
+            saldo += monto;
+            const fechaBase = (p.Fecha || now).toString().substring(0,19).replace('T',' ');
+            await insStmt.run(fechaBase, 'INGRESO', 'RECIBO', p.ReciboID, `Recibo #${p.ReciboID} - ${p.TipoPago||'Pago'}`, monto, p.TipoPago||null, saldo, fechaBase);
+          }
+        } finally { await insStmt.finalize(); }
+        console.log('Backfill caja completado. Movimientos insertados:', pagos.length);
+      }
+    } catch(bfErr){ console.warn('Backfill caja error:', bfErr && bfErr.message); }
+    // Tabla de cierres diarios de caja (snapshot)
+    try {
+      await db.exec(`CREATE TABLE IF NOT EXISTS caja_cierres (
+        CierreID INTEGER PRIMARY KEY AUTOINCREMENT,
+        Fecha TEXT,             -- Fecha del cierre (día)
+        Hora TEXT,              -- Hora exacta del cierre
+        SaldoFinal REAL,        -- Saldo al momento del cierre
+        TotalIngresos REAL,
+        TotalEgresos REAL,
+        TotalAjustes REAL,
+        NetoPeriodo REAL,       -- Ingresos - Egresos + Ajustes del día
+        Observaciones TEXT,
+        CreatedAt TEXT
+      );`);
+    } catch(e){ console.warn('DB migration caja_cierres:', e && e.message); }
+  } catch(e){ console.warn('DB migration caja_movimientos:', e && e.message); }
 } catch (err) {
   console.warn('DB migration recibos: error al crear tablas/columnas', err && err.message);
+}
+
+// Helper para insertar movimiento de caja calculando saldo
+async function insertarMovimientoCaja({ Tipo, Origen, ReferenciaID, Descripcion, Importe, Medio }, trx=false){
+  // Tipo: INGRESO suma, EGRESO resta, AJUSTE puede sumar/restar según signo Importe (pero aquí asumimos Importe positivo y lógica por Tipo)
+  const now = new Date().toISOString().slice(0,19).replace('T',' ');
+  const prev = await db.get('SELECT SaldoPosterior FROM caja_movimientos ORDER BY MovimientoID DESC LIMIT 1');
+  const saldoPrev = prev ? (Number(prev.SaldoPosterior)||0) : 0;
+  let delta = Number(Importe)||0;
+  if (Tipo === 'EGRESO') delta = -Math.abs(delta);
+  else if (Tipo === 'AJUSTE') delta = delta; // permitir positivo/negativo pasado por Importe (extensión futura)
+  const saldoNuevo = saldoPrev + delta;
+  const impPositivo = Math.abs(Number(Importe)||0);
+  const stmt = 'INSERT INTO caja_movimientos (FechaHora, Tipo, Origen, ReferenciaID, Descripcion, Importe, Medio, SaldoPosterior, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+  await db.run(stmt, now, Tipo, Origen || null, ReferenciaID || null, Descripcion || null, impPositivo, Medio || null, saldoNuevo, now);
+  return saldoNuevo;
 }
 
 // Crear un Recibo: body { Fecha?, ClienteID?, ventas: [{VentaID, ImporteAplicado}], pagos: [{TipoPago, Monto, Datos}], Observaciones }
@@ -2367,6 +2437,17 @@ app.post('/api/recibos', async (req, res) => {
           const monto = Number(p.Monto || 0);
           const datos = p.Datos ? JSON.stringify(p.Datos) : (p.DatosText || null);
           await stmtPago.run(reciboId, tipo, monto, datos, paymentMethodId, bankId);
+          // Registrar ingreso en caja por cada pago (medio = tipo / código)
+          try {
+            await insertarMovimientoCaja({
+              Tipo: 'INGRESO',
+              Origen: 'RECIBO',
+              ReferenciaID: reciboId,
+              Descripcion: `Recibo #${reciboId} - ${tipo}`,
+              Importe: monto,
+              Medio: tipo
+            }, true);
+          } catch(cErr){ console.warn('No se pudo registrar movimiento de caja para recibo', reciboId, cErr && cErr.message); }
         }
       } finally { await stmtPago.finalize(); }
 
@@ -2496,6 +2577,26 @@ app.get('/api/recibos/:id/export/pdf', async (req, res) => {
   } catch (err) {
     console.error('Error GET /api/recibos/:id/export/pdf', err && (err.stack || err.message || err));
     if (!res.headersSent) res.status(500).json({ ok:false, error: err.message || err });
+  }
+});
+
+// Búsqueda global ligera (clientes, ventas, productos, recibos)
+app.get('/api/search', async (req, res) => {
+  try {
+    const termRaw = (req.query.q || '').toString().trim();
+    if (!termRaw) return res.json({ ok:true, q:'', clientes:[], ventas:[], productos:[], recibos:[] });
+    const q = `%${termRaw.replace(/%/g,'').replace(/_/g,'')}%`;
+    const limit = 8;
+
+    const clientes = await db.all(`SELECT ClienteID, NombreRazonSocial FROM clientes WHERE NombreRazonSocial LIKE ? ORDER BY NombreRazonSocial LIMIT ?`, q, limit);
+    const ventas = await db.all(`SELECT VentaID, NumeroComp, FechaComp, Total FROM ventas WHERE NumeroComp LIKE ? ORDER BY VentaID DESC LIMIT ?`, q, limit);
+    const productos = await db.all(`SELECT ProductoID, Nombre, Codigo FROM productos WHERE (Nombre LIKE ? OR Codigo LIKE ?) ORDER BY ProductoID DESC LIMIT ?`, q, q, limit);
+    const recibos = await db.all(`SELECT ReciboID, Fecha FROM recibos WHERE CAST(ReciboID as TEXT) LIKE ? ORDER BY ReciboID DESC LIMIT ?`, q, limit);
+
+    res.json({ ok:true, q:termRaw, clientes, ventas, productos, recibos });
+  } catch (err) {
+    console.error('Error GET /api/search', err && (err.stack||err));
+    res.status(500).json({ ok:false, error: err.message || err });
   }
 });
 
@@ -2681,6 +2782,336 @@ app.get('/api/recibos/export/pdf', async (req, res) => {
   } catch (err) {
     console.error('Error GET /api/recibos/export/pdf', err && (err.stack || err.message || err));
     res.status(500).json({ ok:false, error: err.message || err });
+  }
+});
+
+// ----------------- CAJA: Endpoints REST -----------------
+// Garantiza que existan tablas de caja (idempotente) y realiza backfill si están vacías
+let _cajaEnsured = false;
+async function ensureCajaTables(){
+  if (!db) throw new Error('DB no inicializada');
+  // Verificar si existe tabla caja_movimientos
+  const tablas = await db.all("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('caja_movimientos','caja_cierres')");
+  const names = new Set((tablas||[]).map(t=>t.name));
+  if (!names.has('caja_movimientos')) {
+    await db.exec(`CREATE TABLE IF NOT EXISTS caja_movimientos (
+      MovimientoID INTEGER PRIMARY KEY AUTOINCREMENT,
+      FechaHora TEXT,
+      Tipo TEXT,
+      Origen TEXT,
+      ReferenciaID INTEGER,
+      Descripcion TEXT,
+      Importe REAL DEFAULT 0,
+      Medio TEXT,
+      SaldoPosterior REAL DEFAULT 0,
+      CreatedAt TEXT
+    );`);
+  }
+  if (!names.has('caja_cierres')) {
+    await db.exec(`CREATE TABLE IF NOT EXISTS caja_cierres (
+      CierreID INTEGER PRIMARY KEY AUTOINCREMENT,
+      Fecha TEXT,
+      Hora TEXT,
+      SaldoFinal REAL,
+      TotalIngresos REAL,
+      TotalEgresos REAL,
+      TotalAjustes REAL,
+      NetoPeriodo REAL,
+      Observaciones TEXT,
+      CreatedAt TEXT
+    );`);
+  }
+  if (!_cajaEnsured) {
+    _cajaEnsured = true; // evitar repetir backfill cada request
+    try {
+      const countCaja = await db.get('SELECT COUNT(*) as c FROM caja_movimientos');
+      if (countCaja && countCaja.c === 0) {
+        const pagos = await db.all(`SELECT rp.ReciboID, rp.Monto, rp.TipoPago, r.Fecha
+          FROM recibo_pagos rp INNER JOIN recibos r ON r.ReciboID = rp.ReciboID
+          ORDER BY r.ReciboID ASC, rp.ReciboPagoID ASC`);
+        let saldo = 0; const now = new Date().toISOString().slice(0,19).replace('T',' ');
+        const ins = await db.prepare('INSERT INTO caja_movimientos (FechaHora, Tipo, Origen, ReferenciaID, Descripcion, Importe, Medio, SaldoPosterior, CreatedAt) VALUES (?,?,?,?,?,?,?,?,?)');
+        try {
+          for (const p of pagos) {
+            const monto = Number(p.Monto)||0; if (monto<=0) continue;
+            saldo += monto;
+            const fechaBase = (p.Fecha || now).toString().substring(0,19).replace('T',' ');
+            await ins.run(fechaBase,'INGRESO','RECIBO',p.ReciboID,`Recibo #${p.ReciboID} - ${p.TipoPago||'Pago'}`,monto,p.TipoPago||null,saldo,fechaBase);
+          }
+        } finally { await ins.finalize(); }
+        console.log('ensureCajaTables: backfill caja completado con', pagos.length, 'pagos');
+      }
+    } catch(e){ console.warn('ensureCajaTables backfill error:', e && e.message); }
+  }
+}
+
+// Helper para recalcular saldos posteriores en caja (cuando se borra un movimiento manual)
+async function recalcCajaSaldos(){
+  const rows = await db.all('SELECT MovimientoID, Importe, Tipo FROM caja_movimientos ORDER BY MovimientoID ASC');
+  let saldo = 0;
+  for (const r of rows) {
+    let delta = Number(r.Importe)||0;
+    if (r.Tipo === 'EGRESO') delta = -Math.abs(delta);
+    else if (r.Tipo === 'AJUSTE') delta = (Number(r.Importe)||0); // signo según carga original (se guardó como abs en Importe, pero delta original pudo ser negativa si era ajuste negativo; no la conservamos). No podemos recuperar el signo original si era ajuste negativo -> para preservar, añadimos columna futura. Por ahora asumimos ajuste siempre positivo (sumando).
+    saldo += delta;
+    await db.run('UPDATE caja_movimientos SET SaldoPosterior = ? WHERE MovimientoID = ?', saldo, r.MovimientoID);
+  }
+  return saldo;
+}
+
+// Lista de movimientos de caja con filtros
+app.get('/api/caja/movimientos', async (req, res) => {
+  try {
+    await ensureCajaTables();
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    const desde = req.query.desde || null;
+    const hasta = req.query.hasta || null;
+    const tipo = req.query.tipo || null; // INGRESO|EGRESO|AJUSTE
+    const medio = req.query.medio || null;
+    const origen = req.query.origen || null; // RECIBO|MANUAL|AJUSTE
+    const q = req.query.q ? `%${String(req.query.q).trim()}%` : null;
+
+    const where = [];
+    const params = [];
+    if (desde) { where.push('date(FechaHora) >= date(?)'); params.push(desde); }
+    if (hasta) { where.push('date(FechaHora) <= date(?)'); params.push(hasta); }
+    if (tipo) { where.push('Tipo = ?'); params.push(tipo); }
+    if (medio) { where.push('Medio = ?'); params.push(medio); }
+    if (origen) { where.push('Origen = ?'); params.push(origen); }
+    if (q) { where.push('(Descripcion LIKE ? OR Medio LIKE ?)'); params.push(q, q); }
+    const whereSql = where.length ? ('WHERE ' + where.join(' AND ')) : '';
+
+    const totalRow = await db.get(`SELECT COUNT(*) as cnt FROM caja_movimientos ${whereSql}`, params);
+    const total = totalRow ? totalRow.cnt : 0;
+    const rows = await db.all(`SELECT * FROM caja_movimientos ${whereSql} ORDER BY MovimientoID DESC LIMIT ? OFFSET ?`, [...params, limit, offset]);
+
+    // Totales acumulados en rango
+    const sumRow = await db.get(`SELECT 
+        SUM(CASE WHEN Tipo='INGRESO' THEN Importe ELSE 0 END) as totalIngresos,
+        SUM(CASE WHEN Tipo='EGRESO' THEN Importe ELSE 0 END) as totalEgresos,
+        SUM(CASE WHEN Tipo='AJUSTE' THEN Importe ELSE 0 END) as totalAjustes
+      FROM caja_movimientos ${whereSql}`, params);
+    const saldoActualRow = await db.get('SELECT SaldoPosterior FROM caja_movimientos ORDER BY MovimientoID DESC LIMIT 1');
+    res.json({ items: rows, total, limit, offset, totals: {
+      ingresos: sumRow?.totalIngresos || 0,
+      egresos: sumRow?.totalEgresos || 0,
+      ajustes: sumRow?.totalAjustes || 0,
+      neto: (sumRow?.totalIngresos || 0) - (sumRow?.totalEgresos || 0)
+    }, saldoActual: saldoActualRow ? (saldoActualRow.SaldoPosterior||0) : 0 });
+  } catch (err) {
+    console.error('Error GET /api/caja/movimientos', err && (err.message||err));
+    res.status(500).json({ ok:false, error: err.message||err });
+  }
+});
+
+// Crear movimiento manual (EGRESO / AJUSTE / INGRESO manual)
+app.post('/api/caja/movimientos', async (req, res) => {
+  try {
+    await ensureCajaTables();
+    const { Tipo, Importe, Medio, Descripcion } = req.body || {};
+    if (!Tipo || !['INGRESO','EGRESO','AJUSTE'].includes(Tipo)) return res.status(400).json({ ok:false, error:'Tipo inválido' });
+    if (Importe === undefined || Importe === null || isNaN(Number(Importe))) return res.status(400).json({ ok:false, error:'Importe requerido' });
+    const numImp = Number(Importe);
+    if (Tipo !== 'AJUSTE' && numImp <= 0) return res.status(400).json({ ok:false, error:'Importe debe ser > 0' });
+    // Para AJUSTE permitir negativo (corrección) o positivo
+    await insertarMovimientoCaja({
+      Tipo, Origen: 'MANUAL', ReferenciaID: null,
+      Descripcion: Descripcion || (Tipo+' manual'), Importe: numImp, Medio: Medio || null
+    });
+    const saldoActualRow = await db.get('SELECT SaldoPosterior FROM caja_movimientos ORDER BY MovimientoID DESC LIMIT 1');
+    res.json({ ok:true, saldoActual: saldoActualRow ? (saldoActualRow.SaldoPosterior||0) : 0 });
+  } catch (err) {
+    console.error('Error POST /api/caja/movimientos', err && (err.message||err));
+    res.status(500).json({ ok:false, error: err.message||err });
+  }
+});
+
+// Eliminar movimiento manual (no borra ingresos originados en Recibos para evitar desbalance)
+app.delete('/api/caja/movimientos/:id', async (req, res) => {
+  try {
+    await ensureCajaTables();
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ ok:false, error:'ID inválido' });
+    const mov = await db.get('SELECT * FROM caja_movimientos WHERE MovimientoID = ?', id);
+    if (!mov) return res.status(404).json({ ok:false, error:'Movimiento no encontrado' });
+    if (mov.Origen !== 'MANUAL') return res.status(400).json({ ok:false, error:'Sólo se pueden borrar movimientos MANUAL' });
+    await db.exec('BEGIN TRANSACTION');
+    try {
+      await db.run('DELETE FROM caja_movimientos WHERE MovimientoID = ?', id);
+      await recalcCajaSaldos();
+      await db.exec('COMMIT');
+    } catch(e){ await db.exec('ROLLBACK'); throw e; }
+    const saldoActualRow = await db.get('SELECT SaldoPosterior FROM caja_movimientos ORDER BY MovimientoID DESC LIMIT 1');
+    res.json({ ok:true, saldoActual: saldoActualRow ? (saldoActualRow.SaldoPosterior||0) : 0 });
+  } catch (err) {
+    console.error('Error DELETE /api/caja/movimientos/:id', err && (err.message||err));
+    res.status(500).json({ ok:false, error: err.message||err });
+  }
+});
+
+// Summary de caja por rango
+app.get('/api/caja/summary', async (req, res) => {
+  try {
+    await ensureCajaTables();
+    const desde = req.query.desde || null;
+    const hasta = req.query.hasta || null;
+    const where = [];
+    const params = [];
+    if (desde) { where.push('date(FechaHora) >= date(?)'); params.push(desde); }
+    if (hasta) { where.push('date(FechaHora) <= date(?)'); params.push(hasta); }
+    const whereSql = where.length ? ('WHERE '+where.join(' AND ')) : '';
+    const sum = await db.get(`SELECT 
+        SUM(CASE WHEN Tipo='INGRESO' THEN Importe ELSE 0 END) as ingresos,
+        SUM(CASE WHEN Tipo='EGRESO' THEN Importe ELSE 0 END) as egresos,
+        SUM(CASE WHEN Tipo='AJUSTE' THEN Importe ELSE 0 END) as ajustes
+      FROM caja_movimientos ${whereSql}`, params);
+    const medios = await db.all(`SELECT Medio,
+        SUM(CASE WHEN Tipo='INGRESO' THEN Importe ELSE 0 END) as ingresos,
+        SUM(CASE WHEN Tipo='EGRESO' THEN Importe ELSE 0 END) as egresos
+      FROM caja_movimientos ${whereSql} GROUP BY Medio ORDER BY Medio` , params);
+    // Saldo inicial: sumatoria antes de 'desde'
+    let saldoInicial = 0; let saldoFinal = 0;
+    if (desde) {
+      const prev = await db.get(`SELECT 
+          SUM(CASE WHEN Tipo='INGRESO' THEN Importe ELSE 0 END) - SUM(CASE WHEN Tipo='EGRESO' THEN Importe ELSE 0 END) as saldo
+        FROM caja_movimientos WHERE date(FechaHora) < date(?)`, desde);
+      saldoInicial = prev ? (prev.saldo || 0) : 0;
+    }
+    const last = await db.get('SELECT SaldoPosterior FROM caja_movimientos ORDER BY MovimientoID DESC LIMIT 1');
+    saldoFinal = last ? (last.SaldoPosterior||0) : 0;
+    res.json({ ok:true, rango: { desde, hasta }, totales: {
+      ingresos: sum?.ingresos||0,
+      egresos: sum?.egresos||0,
+      ajustes: sum?.ajustes||0,
+      neto: (sum?.ingresos||0) - (sum?.egresos||0)
+    }, porMedio: medios, saldoInicial, saldoFinal });
+  } catch (err) {
+    console.error('Error GET /api/caja/summary', err && (err.message||err));
+    res.status(500).json({ ok:false, error: err.message||err });
+  }
+});
+
+// Export CSV de caja
+app.get('/api/caja/export', async (req, res) => {
+  try {
+    await ensureCajaTables();
+    const desde = req.query.desde || null;
+    const hasta = req.query.hasta || null;
+    const where = []; const params = [];
+    if (desde) { where.push('date(FechaHora) >= date(?)'); params.push(desde); }
+    if (hasta) { where.push('date(FechaHora) <= date(?)'); params.push(hasta); }
+    const whereSql = where.length ? ('WHERE '+where.join(' AND ')) : '';
+    const rows = await db.all(`SELECT * FROM caja_movimientos ${whereSql} ORDER BY MovimientoID ASC`, params);
+    const headers = ['MovimientoID','FechaHora','Tipo','Origen','ReferenciaID','Descripcion','Medio','Importe','SaldoPosterior'];
+    const out = [headers.join(',')];
+    for (const r of rows) {
+      const line = [r.MovimientoID, r.FechaHora, r.Tipo, r.Origen, r.ReferenciaID||'', (r.Descripcion||'').replace(/,/g,' '), r.Medio||'', r.Importe, r.SaldoPosterior];
+      out.push(line.join(','));
+    }
+    res.setHeader('Content-Type','text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition','attachment; filename="caja_movimientos.csv"');
+    res.send(out.join('\n'));
+  } catch (err) {
+    console.error('Error GET /api/caja/export', err && (err.message||err));
+    res.status(500).json({ ok:false, error: err.message||err });
+  }
+});
+
+// Export PDF de caja
+app.get('/api/caja/export/pdf', async (req, res) => {
+  try {
+    await ensureCajaTables();
+    const desde = req.query.desde || null;
+    const hasta = req.query.hasta || null;
+    const where = []; const params = [];
+    if (desde) { where.push('date(FechaHora) >= date(?)'); params.push(desde); }
+    if (hasta) { where.push('date(FechaHora) <= date(?)'); params.push(hasta); }
+    const whereSql = where.length ? ('WHERE '+where.join(' AND ')) : '';
+    const rows = await db.all(`SELECT * FROM caja_movimientos ${whereSql} ORDER BY MovimientoID ASC LIMIT 5000`, params);
+    res.setHeader('Content-Type','application/pdf');
+    res.setHeader('Content-Disposition','attachment; filename="caja_movimientos.pdf"');
+    await ensurePdfKit();
+    const doc = new PDFDocument({ margin:40 });
+    doc.pipe(res);
+    doc.fontSize(16).text('Movimientos de Caja', { align:'center' });
+    const filtros = [];
+    if (desde) filtros.push('Desde '+desde); if (hasta) filtros.push('Hasta '+hasta);
+    doc.moveDown(0.5).fontSize(9).fillColor('#555').text('Filtros: '+(filtros.join(' | ')||'Ninguno'));
+    doc.fillColor('#000').moveDown(0.5);
+    doc.fontSize(9).text('ID',40,{continued:true})
+      .text('Fecha',70,{continued:true})
+      .text('Tipo',135,{continued:true})
+      .text('Origen',180,{continued:true})
+      .text('Ref',225,{continued:true})
+      .text('Medio',260,{continued:true})
+      .text('Importe',330,{continued:true, align:'right'})
+      .text('Saldo',400,{align:'right'});
+    doc.moveTo(40, doc.y).lineTo(560, doc.y).stroke();
+    let totIng=0, totEgr=0;
+    for (const r of rows) {
+      if (r.Tipo === 'INGRESO') totIng += Number(r.Importe)||0; else if (r.Tipo==='EGRESO') totEgr += Number(r.Importe)||0;
+      const fecha = (r.FechaHora||'').replace('T',' ').split(' ')[0];
+      doc.fontSize(8).text(String(r.MovimientoID),40,{continued:true})
+        .text(fecha,70,{continued:true})
+        .text(r.Tipo||'',135,{continued:true})
+        .text(r.Origen||'',180,{continued:true})
+        .text(r.ReferenciaID?('#'+r.ReferenciaID):'',225,{continued:true})
+        .text((r.Medio||'').substring(0,10),260,{continued:true})
+        .text((Number(r.Importe)||0).toFixed(2),330,{continued:true, align:'right'})
+        .text((Number(r.SaldoPosterior)||0).toFixed(2),400,{align:'right'});
+    }
+    doc.moveDown(0.6).fontSize(10).text(`Totales: Ingresos ${totIng.toFixed(2)} | Egresos ${totEgr.toFixed(2)} | Neto ${(totIng-totEgr).toFixed(2)}`);
+    doc.end();
+  } catch (err) {
+    console.error('Error GET /api/caja/export/pdf', err && (err.message||err));
+    if (!res.headersSent) res.status(500).json({ ok:false, error: err.message||err });
+  }
+});
+
+// ---- CIERRE DIARIO DE CAJA ----
+// Listar cierres (últimos 60)
+app.get('/api/caja/cierres', async (req, res) => {
+  try {
+    await ensureCajaTables();
+    const rows = await db.all('SELECT * FROM caja_cierres ORDER BY CierreID DESC LIMIT 60');
+    res.json({ ok:true, items: rows });
+  } catch(err){
+    console.error('Error GET /api/caja/cierres', err && err.message);
+    res.status(500).json({ ok:false, error: err.message||err });
+  }
+});
+
+// Generar cierre del día (si ya existe para la fecha, devolverlo)
+app.post('/api/caja/cierre', async (req, res) => {
+  try {
+    await ensureCajaTables();
+    const { Fecha, Observaciones } = req.body || {};
+    const hoyFecha = (Fecha || new Date().toISOString().slice(0,10));
+    // Verificar si ya existe cierre para esa fecha
+    const existente = await db.get('SELECT * FROM caja_cierres WHERE Fecha = ? ORDER BY CierreID DESC LIMIT 1', hoyFecha);
+    if (existente) return res.json({ ok:true, cierre: existente, reused:true });
+    // Calcular totales del día
+    const sum = await db.get(`SELECT 
+        SUM(CASE WHEN Tipo='INGRESO' THEN Importe ELSE 0 END) as ingresos,
+        SUM(CASE WHEN Tipo='EGRESO' THEN Importe ELSE 0 END) as egresos,
+        SUM(CASE WHEN Tipo='AJUSTE' THEN Importe ELSE 0 END) as ajustes
+      FROM caja_movimientos WHERE date(FechaHora) = date(?)`, hoyFecha);
+    const saldoRow = await db.get('SELECT SaldoPosterior FROM caja_movimientos ORDER BY MovimientoID DESC LIMIT 1');
+    const saldoFinal = saldoRow ? (Number(saldoRow.SaldoPosterior)||0) : 0;
+    const ingresos = Number(sum?.ingresos||0);
+    const egresos = Number(sum?.egresos||0);
+    const ajustes = Number(sum?.ajustes||0);
+    const neto = ingresos - egresos + ajustes;
+    const nowTime = new Date().toISOString().slice(11,19);
+    const nowStamp = new Date().toISOString().slice(0,19).replace('T',' ');
+    const ins = await db.run(`INSERT INTO caja_cierres (Fecha, Hora, SaldoFinal, TotalIngresos, TotalEgresos, TotalAjustes, NetoPeriodo, Observaciones, CreatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, hoyFecha, nowTime, saldoFinal, ingresos, egresos, ajustes, neto, Observaciones||null, nowStamp);
+    const cierre = await db.get('SELECT * FROM caja_cierres WHERE CierreID = ?', ins.lastID);
+    res.json({ ok:true, cierre, reused:false });
+  } catch(err){
+    console.error('Error POST /api/caja/cierre', err && err.message);
+    res.status(500).json({ ok:false, error: err.message||err });
   }
 });
 
